@@ -1,0 +1,133 @@
+/* MAIN-world adapter: tokens remain here; only normalized quotas cross the
+ * bridge. Observe usage-page RPCs for calibration; never read chat responses. */
+(function () {
+  "use strict";
+  if (location.origin !== "https://gemini.google.com" || window.__usageMeterGeminiMain) return;
+  window.__usageMeterGeminiMain = true;
+  var rpc = UsageGeminiRPC;
+  var originalFetch = window.fetch;
+  var candidates = [], running = false;
+  var RESPONSE = "usage-meter-gemini-response", COMMAND = "usage-meter-gemini-command";
+  function post(type, values) { window.postMessage(Object.assign({ source: RESPONSE, type: type }, values), location.origin); }
+  function current() { try { return rpc.route(location.href); } catch (_) { return null; } }
+  function usageRequest(url, body) {
+    var here = current();
+    if (!here || !here.isUsage) return null;
+    try {
+      var parsed = new URL(url, location.href);
+      if (parsed.origin !== location.origin || !/^\/(?:u\/\d+\/)?_\/BardChatUi\/data\/batchexecute$/.test(parsed.pathname)) return null;
+      if (rpc.route(parsed.href).account !== here.account) return null;
+      var tuples = JSON.parse(new URLSearchParams(String(body || "")).get("f.req"));
+      if (!Array.isArray(tuples) || !Array.isArray(tuples[0])) return null;
+      var ids = tuples[0].filter(function (tuple) {
+        return Array.isArray(tuple) && rpc.validId(tuple[0]) && typeof tuple[1] === "string" && tuple[1].trim() === "[]";
+      }).map(function (tuple) { return tuple[0]; });
+      return ids.length ? { ids: ids, account: here.account } : null;
+    } catch (_) { return null; }
+  }
+  function capture(info, text) {
+    var here = current();
+    if (!info || !here || !here.isUsage || info.account !== here.account) return;
+    rpc.decode(text).forEach(function (data) {
+      if (!info.ids.includes(data.rpcid)) return;
+      var candidate = { account: info.account, rpcid: data.rpcid, usage: data.usage, capturedAt: Date.now() };
+      candidates.push(candidate); candidates = candidates.slice(-8);
+      post("capture", candidate);
+    });
+  }
+
+  if (typeof originalFetch === "function") {
+    window.fetch = function (input, init) {
+      // Preserve the original promise and response, including streaming bodies.
+      var here = current();
+      var infoPromise = Promise.resolve(null);
+      if (here && here.isUsage) {
+        var url = typeof input === "string" ? input : input && (input.url || String(input));
+        var body = init && init.body;
+        var info = usageRequest(url, body);
+        infoPromise = Promise.resolve(info);
+        if (!info && !body && typeof Request !== "undefined" && input instanceof Request && /batchexecute/.test(url || "")) {
+          try { infoPromise = input.clone().text().then(function (text) { return usageRequest(url, text); }); }
+          catch (_) { /* A used Request cannot be cloned. */ }
+        }
+      }
+      var response = originalFetch.apply(this, arguments);
+      if (here && here.isUsage) {
+        infoPromise.then(function (found) {
+          if (!found) return;
+          return response.then(function (r) { if (r.ok) return r.clone().text().then(function (text) { capture(found, text); }); });
+        }).catch(function () {});
+      }
+      return response;
+    };
+  }
+
+  // Wrap methods, not the constructor, so XHR identity/constants stay intact.
+  if (typeof XMLHttpRequest === "function") {
+    var proto = XMLHttpRequest.prototype, open = proto.open, send = proto.send;
+    var urls = new WeakMap();
+    proto.open = function (method, url) { urls.set(this, url); return open.apply(this, arguments); };
+    proto.send = function (body) {
+      var info = usageRequest(urls.get(this), body), xhr = this;
+      if (info) xhr.addEventListener("load", function () {
+        try { if (xhr.status >= 200 && xhr.status < 300 && (!xhr.responseType || xhr.responseType === "text")) capture(info, xhr.responseText); } catch (_) {}
+      }, { once: true });
+      return send.apply(this, arguments);
+    };
+  }
+
+  async function refresh(message) {
+    var here = current();
+    if (!here || here.account !== message.account || !rpc.validId(message.rpcid) || typeof originalFetch !== "function") {
+      post("result", { id: message.id, account: message.account, error: "Gemini account changed; refresh again" }); return;
+    }
+    if (running) { post("result", { id: message.id, account: here.account, error: "Gemini refresh already in progress" }); return; }
+    running = true;
+    try {
+      // At document_start, Gemini may not have initialized WIZ_global_data yet.
+      var deadline = Date.now() + 5000;
+      while (!(window.WIZ_global_data && window.WIZ_global_data.SNlM0e) && Date.now() < deadline) {
+        await new Promise(function (resolve) { setTimeout(resolve, 100); });
+      }
+      if (!current() || current().account !== here.account) throw new Error("account-changed");
+      var wiz = window.WIZ_global_data || {};
+      if (typeof wiz.SNlM0e !== "string" || !wiz.SNlM0e) { var auth = new Error("auth"); auth.status = 401; throw auth; }
+      var url = new URL(here.prefix + "/_/BardChatUi/data/batchexecute", location.origin);
+      url.search = new URLSearchParams({ rpcids: message.rpcid, "source-path": here.usagePath,
+        bl: wiz.cfb2h || "", "f.sid": wiz.FdrFJe || "", hl: "en", _reqid: String(Date.now() % 900000 + 100000), rt: "c" }).toString();
+      var body = new URLSearchParams({ "f.req": JSON.stringify([[[message.rpcid, "[]", null, "generic"]]]), at: wiz.SNlM0e });
+      var response = await originalFetch.call(window, url.href, { method: "POST", credentials: "include", cache: "no-store",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" }, body: body.toString(), signal: AbortSignal.timeout(15000) });
+      if (!response.ok) {
+        var failure = new Error("http"); failure.status = response.status;
+        if (response.status === 429) {
+          var retry = response.headers.get("Retry-After");
+          failure.retryMs = Math.max(60000, /^\d+$/.test(retry || "") ? Number(retry) * 1000 : Date.parse(retry) - Date.now() || 60000);
+        }
+        throw failure;
+      }
+      var decoded = rpc.decode(await response.text(), message.rpcid);
+      if (decoded.length !== 1) throw new Error("schema");
+      post("result", { id: message.id, account: here.account, usage: decoded[0].usage });
+    } catch (error) {
+      // Do not expose arbitrary fetch error text, URLs, tokens or response bodies.
+      var reason = error.status === 401 || error.status === 403 ? "Sign in to Gemini, then refresh"
+        : error.status === 429 ? "Gemini rate limited; wait before refreshing"
+        : "Unable to read Gemini quota. Open Usage page to recalibrate, then refresh.";
+      post("result", { id: message.id, account: here.account, error: reason, status: error.status || 0, retryMs: error.retryMs || 0 });
+    } finally { running = false; }
+  }
+  window.addEventListener("message", function (event) {
+    if (event.source !== window || event.origin !== location.origin) return;
+    var message = event.data;
+    if (!message || message.source !== COMMAND) return;
+    if (message.type === "ping") {
+      post("ready", {});
+      var here = current();
+      if (here && here.isUsage) candidates.filter(function (c) { return c.account === here.account && Date.now() - c.capturedAt < 20000; }).forEach(function (c) { post("capture", c); });
+    } else if (message.type === "refresh" && typeof message.id === "string" && /^[a-zA-Z0-9-]{1,80}$/.test(message.id) && /^\d+$/.test(message.account)) {
+      void refresh(message);
+    }
+  });
+  post("ready", {});
+})();

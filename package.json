@@ -1,0 +1,21 @@
+{
+  "name": "quotalens",
+  "version": "0.5.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check src/content.js && node --check src/providers.js && node --check src/gemini-rpc.js && node --check src/gemini-main.js && node --check src/gemini-usage.js && node --check popup.js && node --check src/gemini-main.bundle.js",
+    "build": "node scripts/build.cjs && node scripts/build-icons.cjs",
+    "build:icons": "node scripts/build-icons.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "sharp": "^0.35.4"
+  },
+  "description": "A Chrome extension that puts Claude, Codex and Gemini quota in focus, right above the chat input.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhidacaishu/QuotaLens.git"
+  }
+}

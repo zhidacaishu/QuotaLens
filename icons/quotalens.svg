@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <title>QuotaLens</title>
+  <desc>A mint quota gauge shaped like a lens and the letter Q, with two usage bars.</desc>
+  <defs>
+    <linearGradient id="surface" x1="12" y1="8" x2="116" y2="128" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#223A45"/>
+      <stop offset="1" stop-color="#10212B"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="30" y1="24" x2="106" y2="106" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B9F9CF"/>
+      <stop offset="1" stop-color="#49CDB1"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="124" height="124" rx="28" fill="url(#surface)"/>
+  <rect x="2.5" y="2.5" width="123" height="123" rx="27.5" stroke="#C5F7E8" stroke-opacity=".12"/>
+  <path d="M83 83L103 103" stroke="url(#mint)" stroke-width="13" stroke-linecap="round"/>
+  <circle cx="59" cy="57" r="34" stroke="#3A555F" stroke-width="9"/>
+  <path d="M59 23A34 34 0 1 0 93 57" stroke="url(#mint)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M44 49H74M44 65H74" stroke="#3A555F" stroke-width="6" stroke-linecap="round"/>
+  <path d="M44 49H66" stroke="#D8FBE6" stroke-width="6" stroke-linecap="round"/>
+  <path d="M44 65H55" stroke="#67DAC1" stroke-width="6" stroke-linecap="round"/>
+</svg>
