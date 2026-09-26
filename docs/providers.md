@@ -1,6 +1,14 @@
 # 数据源与适配说明
 
-核查日期：2026-09-27。适配版本：QuotaLens 0.5.0（沿用 0.4.2 的直接请求方案，统一三站额度栏）。
+核查日期：2026-09-27。适配版本：QuotaLens 0.5.0。
+
+## Claude
+
+- 通过已登录会话访问 `/api/organizations`，选取具备 chat 能力的组织，再请求 `/api/organizations/{id}/usage`。读取 `five_hour` 与 `seven_day` 的使用率和重置时间。
+- 默认每 15 秒轮询，设置下限为 10 秒。组织 ID 缓存约 10 分钟；额度缓存保存在本机。
+- 隐藏标签页停止定时轮询，但已发出的请求和已排队的回复完成刷新仍可能执行。初始化、恢复可见、设置变化、手动刷新和回复完成也会触发请求。
+- 请求去重只在单个标签页内生效，没有跨标签页请求预算。隐藏额度栏不等于停止请求；每秒更新倒计时只做本地渲染。
+- Claude 路径尚未实现 `Retry-After` 或指数退避；不能将 Codex/Gemini 的限流处理理解为三站通用行为。网页用量接口没有面向此扩展公开的推荐轮询频率。
 
 ## Codex
 
@@ -11,7 +19,7 @@
 - 不展示 code review、额外模型额度或 credits 余额。这些不等价于用户要求的通用 5h/7d 配额。
 - 上述网页接口是从公开实现核查到的内部接口，不是 OpenAI 官方承诺稳定的开发者 API。
 
-## Gemini：0.4.1 直接 RPC
+## Gemini：直接 RPC
 
 - [Google 官方 Gemini Apps limits](https://support.google.com/gemini/answer/16275805?hl=en)：五小时窗口及每周限制。官方用量入口为 Settings → Usage Limits。
 - 参考 [Voyager 请求适配](https://github.com/Nagi-ovo/voyager/blob/82607fd9580a9fbd10f74cb352b9702883113dda/public/usage-observer.js) 与 [额度协议解析](https://github.com/Nagi-ovo/voyager/blob/82607fd9580a9fbd10f74cb352b9702883113dda/src/pages/content/usageStatus/index.ts)，核查的是固定提交 `82607fd9580a9fbd10f74cb352b9702883113dda`。
@@ -27,16 +35,14 @@ MAIN 脚本仅在用户访问 `/usage` 时观察该页的 fetch/XHR 用量候选
 
 正常刷新通过直接请求完成；定时刷新默认 5 分钟，另通过停止按钮的 DOM 变化判断回复完成并延迟 4 秒刷新。不复制或读取生成响应来判断完成。DOM 变化导致事件未被识别时仍由定时器兜底。
 
-### 与 0.4.0 的区别
-
-0.4.0 参考 [Gemini Web Quota Monitor](https://github.com/Hakkinex/Gemini_Web_Quota_Monitor)，通过临时非活动标签页读取 DOM。0.4.1 已删除这个后台 worker、标签页创建/关闭流程和对应消息协议。只有用户主动点击官方用量页入口才打开新页面。
+自动刷新不会创建后台标签页。只有用户主动点击官方用量页入口才打开新页面。
 
 ## 权限与验证边界
 
 保持 `storage` 和 Claude、ChatGPT、Gemini 主机访问权限，无新增 cookies、scripting 或全站 tabs 权限。MAIN 清单注入要求 Chrome 111+。
 
-测试使用伪造会话、假额度和模拟 DOM，覆盖直接请求、MAIN/ISOLATED 启动顺序、fetch/XHR 观察、令牌不经消息传递、官方页面校准、账号切换、未知字段、超时和 429 等。0.4.2 已在真实 Chrome 的 Gemini 对话页验证，并对照同账号官方用量页确认数据一致；这不代表已完成 Claude/Codex 新版本的在线验证。网页内部 RPC 不属于 Google 对第三方承诺稳定的公开 API。
+测试使用伪造会话、假额度和模拟 DOM，覆盖直接请求、MAIN/ISOLATED 启动顺序、fetch/XHR 观察、令牌不经消息传递、官方页面校准、账号切换、未知字段、超时和 429 等。ChatGPT / Gemini 核心流程已在 Chrome 验证，Gemini 读数已对照同账号官方用量页；Claude 最近的布局变更仅经过自动化回归。网页内部接口不属于平台对第三方承诺稳定的公开 API，读取方式不代表平台官方授权或推荐。
 
-## 0.4.2 注入修复
+## 为什么保留生成的 Gemini bundle？
 
-真实 Chrome 的扩展错误页报告隔离脚本缺少 `UsageGeminiRPC`。0.4.1 在两个执行环境中声明了同一路径的辅助脚本；0.4.2 给 MAIN 使用独立、自包含的 bundle 路径，隔离环境保留自己的辅助脚本。修复后在同一浏览器和账号下正常显示额度。新增清单跨环境文件去重、bundle 同步检查及初始化异常回归测试。
+`manifest.json` 给 MAIN 环境使用独立、自包含的 `src/gemini-main.bundle.js`，ISOLATED 环境保留自己的辅助脚本，避免同一路径在两个执行环境中声明时出现注入问题。bundle 由 `scripts/build.cjs` 生成，随仓库提交，以支持下载后直接加载扩展。测试检查清单跨环境文件去重、bundle 与源码同步及独立初始化，因此 bundle 不是可删除的旧副本。
