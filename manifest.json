@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "QuotaLens",
-  "version": "0.5.0",
+  "version": "0.1.0",
   "description": "See Claude, Codex and Gemini 5-hour and weekly usage above your chat input. Clear quota bars, reset timers, no API key.",
   "permissions": [
     "storage"
@@ -61,7 +61,7 @@
       "world": "ISOLATED"
     }
   ],
-  "version_name": "0.5.0",
+  "version_name": "0.1.0",
   "minimum_chrome_version": "111",
   "homepage_url": "https://github.com/zhidacaishu/QuotaLens"
 }

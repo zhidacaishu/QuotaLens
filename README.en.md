@@ -8,8 +8,6 @@
 
 QuotaLens is a Chrome extension that puts **Claude, Codex and Gemini 5-hour and weekly usage** right above your chat input. See how much you have used and when your quota resets without repeatedly opening settings.
 
-**On ChatGPT, the extension shows Codex quota, not GPT chat message limits.** Percentages represent usage: `75%` means 75% used. If a window is unavailable, it displays `—` rather than treating missing data as zero.
-
 ## Supported pages
 
 | Page | Quota shown | Source |
@@ -17,17 +15,6 @@ QuotaLens is a Chrome extension that puts **Claude, Codex and Gemini 5-hour and 
 | Claude and Claude Code on the web | Claude 5h / 7d usage | Organization usage endpoint through your signed-in session |
 | ChatGPT and Codex on the web | **Codex** 5h / 7d usage | Codex usage endpoint through your signed-in session |
 | Gemini on the web | Gemini 5h / 7d usage | Direct request to the official usage RPC in the current page |
-
-Availability depends on your plan and the data returned by the platform. QuotaLens does not estimate message counts or display separate credit balances or code review limits.
-
-## Features
-
-- **Quota beside your workflow**: an input-width bar with two progress meters, percentages and reset countdowns.
-- **Compact, stable layout**: about 30px tall in a single row, with percentages and both kinds of timers at 11px. A fixed-width update timestamp prevents the layout from shifting as seconds change.
-- **Responsive positioning**: two rows on narrow screens, collapse and hide controls, and support for composer resizing and in-page navigation. The ChatGPT home greeting gets space when needed.
-- **Automatic refresh**: every 15 seconds by default for Claude / Codex; after replies and every 5 minutes when idle for Gemini. Hidden tabs stop automatic polling.
-- **No temporary Gemini tabs**: usage is fetched directly from the current signed-in page.
-- **No API key or server setup**: uses your existing browser sign-in.
 
 ## Install
 
@@ -45,10 +32,6 @@ git clone git@github.com:zhidacaishu/QuotaLens.git
 
 **Node.js, npm and a build step are not needed for installation.** The repository includes the generated scripts and icons. Keep the loaded folder in place so Chrome can continue reading its files.
 
-### Update
-
-Update your local files (`git pull` for a Git checkout), click **Reload** on QuotaLens in `chrome://extensions`, then refresh your chat pages. An unpacked installation does not update automatically through the Chrome Web Store.
-
 ## Controls
 
 Click the QuotaLens icon in Chrome's toolbar:
@@ -64,15 +47,9 @@ Click the QuotaLens icon in Chrome's toolbar:
 
 Use the arrow on the bar to collapse it, then click the chip to expand. Hover over a countdown for its exact reset time, or over the bar for the quota source.
 
-## Troubleshooting
-
-- **Loading or an error**: check that you are signed in, reload the extension and page, and confirm the extension has access to that site.
-- **Gemini cannot read usage**: choose **Open Usage page** in the popup, wait for the official usage numbers, then return to your chat and refresh. The extension tries to recalibrate the RPC identifier against that page; a changed response structure may still require a code update.
-- **`—` or unavailable**: the platform did not return a recognized 5h / 7d window. This can depend on your plan or an endpoint change.
-- **stale / refresh failed**: the displayed reading is old or a request failed. Refresh after connectivity recovers; wait if the platform has rate-limited requests.
-- **Misplaced or duplicate bars**: disable other quota extensions and refresh. If no composer is found or there is too little space above it, the bar may fall back to a corner; it temporarily hides if it overlaps an editor or dialog.
-
 ## Data, permissions and privacy
+
+[Privacy policy](PRIVACY.md)
 
 - Requests `storage` and access to the supported Claude, ChatGPT and Gemini sites only. No all-site history, `cookies` or `scripting` permission.
 - No telemetry, ads or third-party data server. Usage requests go to the respective platform.
