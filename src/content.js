@@ -436,12 +436,12 @@
           editable.disabled || editable.readOnly || !editable.getClientRects().length) continue;
       var style = getComputedStyle(editable);
       if (style.visibility === "hidden" || style.display === "none") continue;
-      var rect = editable.getBoundingClientRect();
+      var rect = visibleEditorRect(editable);
       if (rect.width < 100 || rect.height < 20 || rect.bottom <= 0 || rect.top >= window.innerHeight ||
           rect.right <= 0 || rect.left >= window.innerWidth) continue;
       var hint = [editable.id, editable.getAttribute("data-testid"), editable.getAttribute("aria-label"), editable.getAttribute("placeholder")].join(" ");
       var score = rect.bottom / window.innerHeight;
-      if (editable.matches('#prompt-textarea, .ql-editor[contenteditable="true"]') || editable.closest('rich-textarea')) score += 20;
+      if (editable.matches('#prompt-textarea, [data-composer-markdown], .ql-editor[contenteditable="true"]') || editable.closest('rich-textarea')) score += 20;
       if (/prompt|composer|message|reply|消息|回复/i.test(hint)) score += 10;
       if (editable.closest("form, fieldset")) score += 2;
       if (score > bestScore) { best = editable; bestScore = score; }
@@ -449,22 +449,50 @@
     return best;
   }
 
-  // Include a nearby input card's border/padding, but never anchor to a large
-  // conversation panel or the entire page when a form wraps more than input.
-  function composerBoundary(editable) {
-    var rect = editable.getBoundingClientRect(), boundary = editable;
-    var parent = editable.parentElement;
-    for (var depth = 0; parent && parent !== document.body && depth < 10; depth++, parent = parent.parentElement) {
-      var box = parent.getBoundingClientRect();
-      // The editable excludes attachment, model and microphone controls.
-      // Walk through wrappers to the full input card on every provider.
-      if (!box.width || !box.height) continue;
-      if (box.width > rect.width + 440 || box.height > rect.height + 180) break;
-      if (box.width < rect.width || box.height < rect.height) continue;
-      var style = getComputedStyle(parent);
-      if (parent.matches("form, fieldset") || parseFloat(style.borderTopWidth) > 0 || parseFloat(style.borderRadius) > 0) boundary = parent;
+  // Long drafts extend beyond their scrolling viewport. Only their visible
+  // part can obscure the meter, or qualify them as an on-screen composer.
+  function visibleEditorRect(editable) {
+    var box = editable.getBoundingClientRect();
+    var rect = { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+    for (var parent = editable.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      var style = getComputedStyle(parent), clip = parent.getBoundingClientRect();
+      if (/auto|scroll|hidden|clip/.test(style.overflowY || style.overflow)) {
+        rect.top = Math.max(rect.top, clip.top); rect.bottom = Math.min(rect.bottom, clip.bottom);
+      }
+      if (/auto|scroll|hidden|clip/.test(style.overflowX || style.overflow)) {
+        rect.left = Math.max(rect.left, clip.left); rect.right = Math.min(rect.right, clip.right);
+      }
     }
-    return boundary;
+    rect.width = Math.max(0, rect.right - rect.left); rect.height = Math.max(0, rect.bottom - rect.top);
+    return rect;
+  }
+
+  // Anchor to the entire composer, including files and controls. Comparing
+  // its height with the editable fails both for tall attachments and for
+  // long drafts clipped by an inner scrolling wrapper.
+  function composerBoundary(editable) {
+    var selectors = provider === "codex"
+      ? '[data-composer-surface-variant], #composer-background, form[data-chatgpt-composer], form[data-type="unified-composer"]'
+      : provider === "gemini" ? 'input-area-v2, .input-area-container, .input-area-fieldset'
+      : '[data-testid="chat-input-container"], [data-testid="composer"]';
+    var known = editable.closest(selectors);
+    if (known && known !== editable) {
+      var knownBox = known.getBoundingClientRect();
+      if (knownBox.width && knownBox.height) return known;
+    }
+    var rect = visibleEditorRect(editable);
+    var parent = editable.parentElement;
+    for (var depth = 0; parent && parent !== document.body && depth < 16; depth++, parent = parent.parentElement) {
+      if (parent.matches('main, article, [role="main"]') ||
+          parent.querySelector('[data-message-author-role], [data-testid="user-message"], [data-testid="assistant-message"], user-query, model-response')) break;
+      var box = parent.getBoundingClientRect();
+      if (!box.width || !box.height) continue;
+      if (box.width > rect.width + 440) break;
+      var style = getComputedStyle(parent);
+      // Stop at the nearest input card; outer forms may include the thread.
+      if (parent.matches("form, fieldset") || parseFloat(style.borderTopWidth) > 0 || parseFloat(style.borderRadius) > 0) return parent;
+    }
+    return editable;
   }
 
   var composerObserver = null, observedEditor = null, observedBoundary = null;
@@ -529,20 +557,22 @@
         barEl.style.removeProperty("width");
       }
     }
-    protectEditor(docked);
+    protectEditor(docked, boundary);
   }
 
   // If a resized/expanded editor reaches the dock, temporarily hide the meter.
   // Visibility preserves its dimensions so it can reappear when space returns.
-  function protectEditor(docked) {
+  function protectEditor(docked, boundary) {
     var overlaps = false;
     if (docked) {
       var bar = barEl.getBoundingClientRect();
-      var editors = document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"], [role="dialog"], [aria-modal="true"]');
+      var editors = Array.from(document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"], [role="dialog"], [aria-modal="true"]'));
+      if (boundary) editors.push(boundary);
       for (var i = 0; i < editors.length; i++) {
         var editor = editors[i];
         if (!editor.getClientRects().length || getComputedStyle(editor).visibility === "hidden") continue;
-        var rect = editor.getBoundingClientRect();
+        var rect = visibleEditorRect(editor);
+        if (!rect.width || !rect.height) continue;
         if (bar.left < rect.right + 4 && bar.right > rect.left - 4 && bar.top < rect.bottom + 4 && bar.bottom > rect.top - 4) {
           overlaps = true; break;
         }

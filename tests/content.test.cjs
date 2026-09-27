@@ -328,3 +328,52 @@ test('Gemini synchronous adapter exception follows the normal failure path', asy
   await env.message('cum-poll');
   assert.equal((await env.message('cum-status')).status, 'error');
 });
+
+for (const [host, card] of [
+  ['chatgpt.com', '<div id="composer" data-composer-surface-variant="default">'],
+  ['gemini.google.com', '<input-area-v2 id="composer">'],
+  ['claude.ai', '<div id="composer" style="border-radius:24px">']
+]) {
+  test(host + ': tall attachments stay below the meter and the outer thread is not the anchor', async t => {
+    const close = host === 'gemini.google.com' ? '</input-area-v2>' : '</div>';
+    const env = await setup(t, { host, route: '/c/test', html: '<form id="thread"><article id="history"></article>' + card +
+      '<div id="files"></div><div id="scroller" style="overflow-y:auto"><div id="editor" contenteditable="true" aria-label="Message"></div></div>' + close + '</form>' });
+    env.boxes.set('thread', rect(100, 50, 700, 690));
+    env.boxes.set('composer', rect(100, 350, 700, 390));
+    env.boxes.set('files', rect(116, 366, 668, 260));
+    env.boxes.set('scroller', rect(116, 650, 668, 50));
+    env.boxes.set('editor', rect(116, 660, 668, 26));
+    env.render();
+    assert.equal(env.bar().getBoundingClientRect().bottom, 344);
+    assert.equal(env.bar().getBoundingClientRect().width, 700);
+    assert.equal(env.bar().style.visibility, '');
+    env.setCfg({ collapsed: true });
+    assert.equal(env.bar().getBoundingClientRect().bottom, 344);
+    env.boxes.set('composer', rect(100, 600, 700, 140));
+    env.render();
+    assert.equal(env.bar().getBoundingClientRect().bottom, 594);
+  });
+
+  test(host + ': scrolled long text does not move or hide the meter', async t => {
+    const close = host === 'gemini.google.com' ? '</input-area-v2>' : '</div>';
+    const env = await setup(t, { host, route: '/c/test', html: card +
+      '<div id="scroller" style="overflow-y:auto"><div id="editor" contenteditable="true" aria-label="Message"></div></div>' + close });
+    env.boxes.set('composer', rect(100, 400, 700, 340));
+    env.boxes.set('scroller', rect(116, 420, 668, 260));
+    for (const top of [420, -500, -1400]) {
+      env.boxes.set('editor', rect(116, top, 668, 2200));
+      env.render();
+      assert.equal(env.bar().getBoundingClientRect().bottom, 394);
+      assert.equal(env.bar().style.visibility, '');
+    }
+  });
+}
+
+test('fallback dock hides when it overlaps attachments, even with the editable far below', async t => {
+  const env = await setup(t, { host: 'chatgpt.com', route: '/c/test', html: '<div id="composer" data-composer-surface-variant="default"><div id="editor" contenteditable="true"></div></div>' });
+  env.boxes.set('composer', rect(100, 20, 800, 720));
+  env.boxes.set('editor', rect(116, 680, 700, 26));
+  env.render();
+  assert.equal(env.bar().classList.contains('cum-composer'), false);
+  assert.equal(env.bar().style.visibility, 'hidden');
+});

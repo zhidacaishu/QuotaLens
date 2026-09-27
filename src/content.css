@@ -1,15 +1,26 @@
 /* QuotaLens — compact quota bar */
 
 #cum-bar {
-  /* dark theme tokens (default) */
-  --txt: #ECEAE3;
-  --muted: rgba(236, 234, 227, 0.52);
-  --label: rgba(236, 234, 227, 0.56);
-  --surface: rgba(255, 255, 255, 0.04);
-  --surface-hover: rgba(255, 255, 255, 0.07);
-  --border: rgba(255, 255, 255, 0.09);
-  --track: rgba(255, 255, 255, 0.11);
-
+  /* Shared glass material; explicit site themes override the system below. */
+  --txt: #f2f3f5;
+  --muted: rgba(239, 242, 247, 0.72);
+  --label: rgba(239, 242, 247, 0.78);
+  --surface: rgba(38, 40, 45, 0.74);
+  --surface-hover: rgba(46, 48, 54, 0.80);
+  --border: rgba(255, 255, 255, 0.13);
+  --border-hover: rgba(255, 255, 255, 0.23);
+  --track: rgba(255, 255, 255, 0.15);
+  --sheen: rgba(255, 255, 255, 0.055);
+  --edge: rgba(255, 255, 255, 0.08);
+  --shadow: 0 4px 14px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.10);
+  --solid: #292b30;
+  --green-start: #6eae8d;
+  --green-end: #91caaa;
+  --amber-start: #d29a4f;
+  --amber-end: #e6bd7d;
+  --red-start: #d9775a;
+  --red-end: #e89478;
+  --control-hover: rgba(255, 255, 255, 0.10);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -19,18 +30,28 @@
   padding: 7px 8px 7px 16px;
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   font-size: 11px;
-  line-height: 1;
+  line-height: 1.4;
   color: var(--txt);
-  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
-  -webkit-backdrop-filter: blur(12px) saturate(125%);
-  backdrop-filter: blur(12px) saturate(125%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.12);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+  backdrop-filter: blur(20px) saturate(145%);
   animation: cum-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
   transition: background 0.2s ease, border-color 0.2s ease;
 }
-#cum-bar:hover { background: var(--surface-hover); border-color: rgba(255, 255, 255, 0.14); }
+/* Keep the same material in every layout, including already-open pages. */
+#cum-bar,
+#cum-bar.cum-code-dock,
+#cum-bar.cum-code-dock.cum-composer {
+  background: linear-gradient(180deg, var(--sheen), transparent 75%), var(--surface);
+  box-shadow: inset 0 1px 0 var(--edge), var(--shadow);
+}
+#cum-bar:hover,
+#cum-bar.cum-code-dock:hover,
+#cum-bar.cum-code-dock.cum-composer:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-hover);
+}
 #cum-bar .cum-source { display: none; }
 #cum-bar .cum-source:hover { color: var(--txt); text-decoration: underline; }
 #cum-bar.cum-collapsed .cum-source { display: none; }
@@ -67,12 +88,12 @@
   height: 100%;
   width: 0;
   border-radius: 4px;
-  background: linear-gradient(90deg, #5FA37F, #83C6A0);
+  background: linear-gradient(90deg, var(--green-start), var(--green-end));
   box-shadow: 0 0 8px rgba(120, 200, 160, 0.35);
   transition: width 0.55s cubic-bezier(0.2, 0.7, 0.2, 1), background 0.3s ease, box-shadow 0.3s ease;
 }
-#cum-bar .cum-fill.cum-amber { background: linear-gradient(90deg, #D29A4F, #E6BD7D); box-shadow: 0 0 8px rgba(220, 165, 90, 0.32); }
-#cum-bar .cum-fill.cum-red { background: linear-gradient(90deg, #D9775A, #E89478); box-shadow: 0 0 9px rgba(217, 119, 90, 0.4); }
+#cum-bar .cum-fill.cum-amber { background: linear-gradient(90deg, var(--amber-start), var(--amber-end)); box-shadow: 0 0 8px rgba(220, 165, 90, 0.32); }
+#cum-bar .cum-fill.cum-red { background: linear-gradient(90deg, var(--red-start), var(--red-end)); box-shadow: 0 0 9px rgba(217, 119, 90, 0.4); }
 #cum-bar .cum-pct {
   font-size: 11.5px;
   font-weight: 600;
@@ -81,6 +102,10 @@
   min-width: 42px;
 }
 #cum-bar .cum-reset { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* Ellipsis clips vertically too. Leave room for descenders (days / ago)
+   across provider fonts and browser zoom levels. */
+#cum-bar .cum-reset,
+#cum-bar .cum-updated { line-height: 1.4; padding-block: 1px; }
 
 #cum-bar .cum-divider { width: 1px; height: 16px; background: var(--border); flex: none; }
 
@@ -90,14 +115,8 @@
   height: 7px;
   border-radius: 50%;
   flex: none;
-  background: #7FCBA4;
-  box-shadow: 0 0 0 0 rgba(127, 203, 164, 0.55);
-  animation: cum-pulse 2.6s ease-out infinite;
-}
-@keyframes cum-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(127, 203, 164, 0.5); }
-  70% { box-shadow: 0 0 0 6px rgba(127, 203, 164, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(127, 203, 164, 0); }
+  background: var(--green-end);
+  box-shadow: 0 0 0 2px rgba(127, 203, 164, 0.12);
 }
 /* Reserve a stable slot across just now / 9s ago / 10s ago / 1m ago. */
 #cum-bar .cum-updated {
@@ -121,7 +140,7 @@
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-#cum-bar .cum-min:hover { background: var(--surface-hover); color: var(--txt); }
+#cum-bar .cum-min:hover { background: var(--control-hover); color: var(--txt); }
 #cum-bar .cum-min svg { width: 13px; height: 13px; display: block; }
 
 #cum-bar .cum-status { font-size: 11px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
@@ -154,7 +173,6 @@
   max-width: calc(100vw - 32px);
   margin: 0;
   padding: 6px 10px;
-  background: #21211f;
   animation: none;
 }
 #cum-bar.cum-code-dock .cum-main { gap: 6px; }
@@ -173,9 +191,7 @@
 #cum-bar.cum-code-dock.cum-composer {
   border-radius: 14px;
   padding: 4px 14px 4px 16px;
-  background: #202020;
   border-color: var(--border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 #cum-bar.cum-code-dock.cum-composer .cum-main { gap: 18px; min-height: 20px; }
 #cum-bar.cum-code-dock.cum-composer .cum-body { flex-direction: row; gap: 16px; align-items: center; }
@@ -197,44 +213,86 @@
   #cum-bar.cum-code-dock .cum-reset { margin-left: auto; }
 }
 
-/* light theme (system) */
+/* System fallback, then explicit ChatGPT / Gemini / Claude themes. */
 @media (prefers-color-scheme: light) {
   #cum-bar {
-    --txt: #2B2A27;
-    --muted: rgba(43, 42, 39, 0.55);
-    --label: rgba(43, 42, 39, 0.5);
-    --surface: rgba(0, 0, 0, 0.035);
-    --surface-hover: rgba(0, 0, 0, 0.06);
-    --border: rgba(0, 0, 0, 0.09);
-    --track: rgba(0, 0, 0, 0.10);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 1px 2px rgba(0, 0, 0, 0.06);
+    --txt: #24272d;
+    --muted: rgba(36, 39, 45, 0.72);
+    --label: rgba(36, 39, 45, 0.76);
+    --surface: rgba(248, 249, 252, 0.76);
+    --surface-hover: rgba(255, 255, 255, 0.86);
+    --border: rgba(30, 35, 45, 0.12);
+    --border-hover: rgba(30, 35, 45, 0.20);
+    --track: rgba(30, 35, 45, 0.13);
+    --sheen: rgba(255, 255, 255, 0.40);
+    --edge: rgba(255, 255, 255, 0.85);
+    --shadow: 0 4px 14px rgba(24, 32, 48, 0.07), 0 1px 3px rgba(24, 32, 48, 0.04);
+    --solid: #f4f5f8;
+    --green-start: #397a5a;
+    --green-end: #568e6d;
+    --amber-start: #94611f;
+    --amber-end: #b77e32;
+    --red-start: #ad4d38;
+    --red-end: #c6664e;
+    --control-hover: rgba(30, 35, 45, 0.07);
   }
-  #cum-bar:hover { border-color: rgba(0, 0, 0, 0.14); }
-  #cum-bar.cum-code-dock,
-  #cum-bar.cum-code-dock.cum-composer { background: #faf9f5; }
+}
+html.light #cum-bar,
+html[data-theme="light"] #cum-bar,
+html[data-mode="light"] #cum-bar,
+body.light-theme #cum-bar {
+  --txt: #24272d;
+  --muted: rgba(36, 39, 45, 0.72);
+  --label: rgba(36, 39, 45, 0.76);
+  --surface: rgba(248, 249, 252, 0.76);
+  --surface-hover: rgba(255, 255, 255, 0.86);
+  --border: rgba(30, 35, 45, 0.12);
+  --border-hover: rgba(30, 35, 45, 0.20);
+  --track: rgba(30, 35, 45, 0.13);
+  --sheen: rgba(255, 255, 255, 0.40);
+  --edge: rgba(255, 255, 255, 0.85);
+  --shadow: 0 4px 14px rgba(24, 32, 48, 0.07), 0 1px 3px rgba(24, 32, 48, 0.04);
+  --solid: #f4f5f8;
+  --green-start: #397a5a;
+  --green-end: #568e6d;
+  --amber-start: #94611f;
+  --amber-end: #b77e32;
+  --red-start: #ad4d38;
+  --red-end: #c6664e;
+  --control-hover: rgba(30, 35, 45, 0.07);
+}
+html.dark #cum-bar,
+html[data-theme="dark"] #cum-bar,
+html[data-mode="dark"] #cum-bar,
+body.dark-theme #cum-bar {
+  --txt: #f2f3f5;
+  --muted: rgba(239, 242, 247, 0.72);
+  --label: rgba(239, 242, 247, 0.78);
+  --surface: rgba(38, 40, 45, 0.74);
+  --surface-hover: rgba(46, 48, 54, 0.80);
+  --border: rgba(255, 255, 255, 0.13);
+  --border-hover: rgba(255, 255, 255, 0.23);
+  --track: rgba(255, 255, 255, 0.15);
+  --sheen: rgba(255, 255, 255, 0.055);
+  --edge: rgba(255, 255, 255, 0.08);
+  --shadow: 0 4px 14px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.10);
+  --solid: #292b30;
+  --green-start: #6eae8d;
+  --green-end: #91caaa;
+  --amber-start: #d29a4f;
+  --amber-end: #e6bd7d;
+  --red-start: #d9775a;
+  --red-end: #e89478;
+  --control-hover: rgba(255, 255, 255, 0.10);
 }
 
-/* explicit Claude theme attribute, if present, wins over system */
-html[data-mode="light"] #cum-bar {
-  --txt: #2B2A27;
-  --muted: rgba(43, 42, 39, 0.55);
-  --label: rgba(43, 42, 39, 0.5);
-  --surface: rgba(0, 0, 0, 0.035);
-  --surface-hover: rgba(0, 0, 0, 0.06);
-  --border: rgba(0, 0, 0, 0.09);
-  --track: rgba(0, 0, 0, 0.10);
+/* Preserve legibility when the browser cannot blur or transparency is reduced. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #cum-bar, #cum-bar.cum-code-dock, #cum-bar.cum-code-dock.cum-composer { background: var(--solid); }
 }
-html[data-mode="dark"] #cum-bar {
-  --txt: #ECEAE3;
-  --muted: rgba(236, 234, 227, 0.52);
-  --label: rgba(236, 234, 227, 0.56);
-  --surface: rgba(255, 255, 255, 0.04);
-  --surface-hover: rgba(255, 255, 255, 0.07);
-  --border: rgba(255, 255, 255, 0.09);
-  --track: rgba(255, 255, 255, 0.11);
+@media (prefers-reduced-transparency: reduce) {
+  #cum-bar, #cum-bar.cum-code-dock, #cum-bar.cum-code-dock.cum-composer { background: var(--solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
-html[data-mode="light"] #cum-bar.cum-code-dock { background: #faf9f5; }
-html[data-mode="dark"] #cum-bar.cum-code-dock { background: #21211f; }
 
 /* accessibility: respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
