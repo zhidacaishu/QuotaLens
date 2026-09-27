@@ -1,21 +1,18 @@
 /* QuotaLens — compact quota bar */
 
 #cum-bar {
-  /* Shared glass material; explicit site themes override the system below. */
-  --txt: #f2f3f5;
-  --muted: rgba(239, 242, 247, 0.72);
-  --label: rgba(239, 242, 247, 0.78);
-  --surface: rgba(38, 40, 45, 0.74);
-  --surface-hover: rgba(46, 48, 54, 0.80);
-  --border: rgba(255, 255, 255, 0.13);
-  --border-hover: rgba(255, 255, 255, 0.23);
-  --track: rgba(255, 255, 255, 0.15);
-  --sheen: rgba(255, 255, 255, 0.055);
-  --edge: rgba(255, 255, 255, 0.08);
-  --shadow: 0 4px 14px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.10);
-  --solid: #292b30;
-  --green-start: #6eae8d;
-  --green-end: #91caaa;
+  /* Quiet glass: low-contrast surface, no highlights or glow. */
+  --txt: #c2c5cb;
+  --muted: rgba(225, 228, 233, 0.60);
+  --label: rgba(225, 228, 233, 0.64);
+  --surface: rgba(24, 25, 28, 0.40);
+  --surface-hover: rgba(28, 29, 32, 0.54);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(255, 255, 255, 0.12);
+  --track: rgba(255, 255, 255, 0.10);
+  --solid: #191a1d;
+  --green-start: #678673;
+  --green-end: #7a9c87;
   --amber-start: #d29a4f;
   --amber-end: #e6bd7d;
   --red-start: #d9775a;
@@ -34,8 +31,8 @@
   color: var(--txt);
   border: 1px solid var(--border);
   border-radius: 16px;
-  -webkit-backdrop-filter: blur(20px) saturate(145%);
-  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(12px) saturate(110%);
+  backdrop-filter: blur(12px) saturate(110%);
   animation: cum-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
   transition: background 0.2s ease, border-color 0.2s ease;
 }
@@ -43,8 +40,8 @@
 #cum-bar,
 #cum-bar.cum-code-dock,
 #cum-bar.cum-code-dock.cum-composer {
-  background: linear-gradient(180deg, var(--sheen), transparent 75%), var(--surface);
-  box-shadow: inset 0 1px 0 var(--edge), var(--shadow);
+  background: var(--surface);
+  box-shadow: none;
 }
 #cum-bar:hover,
 #cum-bar.cum-code-dock:hover,
@@ -69,7 +66,7 @@
 #cum-bar .cum-meter { display: flex; align-items: center; gap: 9px; }
 #cum-bar .cum-label {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--label);
@@ -78,7 +75,7 @@
 #cum-bar .cum-track {
   position: relative;
   width: 88px;
-  height: 5px;
+  height: 3px;
   border-radius: 4px;
   background: var(--track);
   overflow: hidden;
@@ -89,14 +86,14 @@
   width: 0;
   border-radius: 4px;
   background: linear-gradient(90deg, var(--green-start), var(--green-end));
-  box-shadow: 0 0 8px rgba(120, 200, 160, 0.35);
+  box-shadow: none;
   transition: width 0.55s cubic-bezier(0.2, 0.7, 0.2, 1), background 0.3s ease, box-shadow 0.3s ease;
 }
-#cum-bar .cum-fill.cum-amber { background: linear-gradient(90deg, var(--amber-start), var(--amber-end)); box-shadow: 0 0 8px rgba(220, 165, 90, 0.32); }
-#cum-bar .cum-fill.cum-red { background: linear-gradient(90deg, var(--red-start), var(--red-end)); box-shadow: 0 0 9px rgba(217, 119, 90, 0.4); }
+#cum-bar .cum-fill.cum-amber { background: linear-gradient(90deg, var(--amber-start), var(--amber-end)); box-shadow: none; }
+#cum-bar .cum-fill.cum-red { background: linear-gradient(90deg, var(--red-start), var(--red-end)); box-shadow: none; }
 #cum-bar .cum-pct {
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--txt);
   min-width: 42px;
@@ -116,7 +113,7 @@
   border-radius: 50%;
   flex: none;
   background: var(--green-end);
-  box-shadow: 0 0 0 2px rgba(127, 203, 164, 0.12);
+  box-shadow: none;
 }
 /* Reserve a stable slot across just now / 9s ago / 10s ago / 1m ago. */
 #cum-bar .cum-updated {
@@ -154,7 +151,7 @@
   cursor: pointer;
   color: var(--txt);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 #cum-bar .cum-chip-text { letter-spacing: 0.01em; }
 #cum-bar .cum-restore .cum-chev { display: inline-flex; color: var(--muted); transition: color 0.15s ease; }
@@ -197,7 +194,7 @@
 #cum-bar.cum-code-dock.cum-composer .cum-body { flex-direction: row; gap: 16px; align-items: center; }
 #cum-bar.cum-code-dock.cum-composer .cum-meter { flex: 1 1 0; gap: 9px; }
 #cum-bar.cum-code-dock.cum-composer .cum-label { width: auto; font-size: 10px; letter-spacing: 0.025em; }
-#cum-bar.cum-code-dock.cum-composer .cum-track { flex: 1; min-width: 30px; max-width: 140px; height: 5px; }
+#cum-bar.cum-code-dock.cum-composer .cum-track { flex: 1; min-width: 30px; max-width: 140px; height: 3px; }
 #cum-bar.cum-code-dock.cum-composer .cum-pct { min-width: 30px; font-size: 11px; }
 #cum-bar.cum-code-dock.cum-composer .cum-reset { margin-left: auto; font-size: 11px; max-width: 120px; flex-shrink: 1; }
 #cum-bar.cum-code-dock.cum-composer .cum-meta { gap: 9px; }
@@ -216,20 +213,17 @@
 /* System fallback, then explicit ChatGPT / Gemini / Claude themes. */
 @media (prefers-color-scheme: light) {
   #cum-bar {
-    --txt: #24272d;
-    --muted: rgba(36, 39, 45, 0.72);
-    --label: rgba(36, 39, 45, 0.76);
-    --surface: rgba(248, 249, 252, 0.76);
-    --surface-hover: rgba(255, 255, 255, 0.86);
-    --border: rgba(30, 35, 45, 0.12);
-    --border-hover: rgba(30, 35, 45, 0.20);
-    --track: rgba(30, 35, 45, 0.13);
-    --sheen: rgba(255, 255, 255, 0.40);
-    --edge: rgba(255, 255, 255, 0.85);
-    --shadow: 0 4px 14px rgba(24, 32, 48, 0.07), 0 1px 3px rgba(24, 32, 48, 0.04);
-    --solid: #f4f5f8;
-    --green-start: #397a5a;
-    --green-end: #568e6d;
+    --txt: #53585f;
+    --muted: rgba(36, 39, 45, 0.66);
+    --label: rgba(36, 39, 45, 0.68);
+    --surface: rgba(245, 246, 248, 0.38);
+    --surface-hover: rgba(248, 249, 250, 0.56);
+    --border: rgba(30, 35, 45, 0.07);
+    --border-hover: rgba(30, 35, 45, 0.12);
+    --track: rgba(30, 35, 45, 0.09);
+    --solid: #f4f5f6;
+    --green-start: #587864;
+    --green-end: #6c8975;
     --amber-start: #94611f;
     --amber-end: #b77e32;
     --red-start: #ad4d38;
@@ -241,20 +235,17 @@ html.light #cum-bar,
 html[data-theme="light"] #cum-bar,
 html[data-mode="light"] #cum-bar,
 body.light-theme #cum-bar {
-  --txt: #24272d;
-  --muted: rgba(36, 39, 45, 0.72);
-  --label: rgba(36, 39, 45, 0.76);
-  --surface: rgba(248, 249, 252, 0.76);
-  --surface-hover: rgba(255, 255, 255, 0.86);
-  --border: rgba(30, 35, 45, 0.12);
-  --border-hover: rgba(30, 35, 45, 0.20);
-  --track: rgba(30, 35, 45, 0.13);
-  --sheen: rgba(255, 255, 255, 0.40);
-  --edge: rgba(255, 255, 255, 0.85);
-  --shadow: 0 4px 14px rgba(24, 32, 48, 0.07), 0 1px 3px rgba(24, 32, 48, 0.04);
-  --solid: #f4f5f8;
-  --green-start: #397a5a;
-  --green-end: #568e6d;
+  --txt: #53585f;
+  --muted: rgba(36, 39, 45, 0.66);
+  --label: rgba(36, 39, 45, 0.68);
+  --surface: rgba(245, 246, 248, 0.38);
+  --surface-hover: rgba(248, 249, 250, 0.56);
+  --border: rgba(30, 35, 45, 0.07);
+  --border-hover: rgba(30, 35, 45, 0.12);
+  --track: rgba(30, 35, 45, 0.09);
+  --solid: #f4f5f6;
+  --green-start: #587864;
+  --green-end: #6c8975;
   --amber-start: #94611f;
   --amber-end: #b77e32;
   --red-start: #ad4d38;
@@ -265,20 +256,17 @@ html.dark #cum-bar,
 html[data-theme="dark"] #cum-bar,
 html[data-mode="dark"] #cum-bar,
 body.dark-theme #cum-bar {
-  --txt: #f2f3f5;
-  --muted: rgba(239, 242, 247, 0.72);
-  --label: rgba(239, 242, 247, 0.78);
-  --surface: rgba(38, 40, 45, 0.74);
-  --surface-hover: rgba(46, 48, 54, 0.80);
-  --border: rgba(255, 255, 255, 0.13);
-  --border-hover: rgba(255, 255, 255, 0.23);
-  --track: rgba(255, 255, 255, 0.15);
-  --sheen: rgba(255, 255, 255, 0.055);
-  --edge: rgba(255, 255, 255, 0.08);
-  --shadow: 0 4px 14px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.10);
-  --solid: #292b30;
-  --green-start: #6eae8d;
-  --green-end: #91caaa;
+  --txt: #c2c5cb;
+  --muted: rgba(225, 228, 233, 0.60);
+  --label: rgba(225, 228, 233, 0.64);
+  --surface: rgba(24, 25, 28, 0.40);
+  --surface-hover: rgba(28, 29, 32, 0.54);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(255, 255, 255, 0.12);
+  --track: rgba(255, 255, 255, 0.10);
+  --solid: #191a1d;
+  --green-start: #678673;
+  --green-end: #7a9c87;
   --amber-start: #d29a4f;
   --amber-end: #e6bd7d;
   --red-start: #d9775a;
