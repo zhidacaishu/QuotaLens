@@ -1,56 +1,62 @@
 # 数据源与适配说明
 
-当前实现：0.1.1 后续修订（2026-10-03），2026-10-10 复核并通过自动化检查。外部协议参考核查日期：2026-09-27；本次未重新验证线上接口。
+当前版本：0.1.1 修订版（2026-10-03），于 2026-10-10 复核并通过自动化检查。外部协议参考核查日期为 2026-09-27；当前版本未重新进行线上接口实测。
 
 ## Claude
 
-- 每次刷新先访问 /api/organizations，仅在唯一一个组织具备 chat 能力时请求 /api/organizations/{id}/usage。没有符合条件的组织或存在多个候选时明确提示前往官方用量页，不猜测当前组织。
-- 只读取 five_hour 与 seven_day，使用率必须为 0–100 的有限数值。未知字段、嵌套的其他额度不推测为 5h/7d；非法重置日期保持未知。
-- 默认每 15 秒刷新，设置下限为 10 秒。每次刷新产生组织和额度两个请求；请求去重仅在单个标签页生效，没有跨标签页预算。
-- 与 Codex 共用请求及错误处理：每个 HTTP 请求 15 秒超时，429 遵守 Retry-After（秒数或 HTTP 日期，至少等待 1 分钟），手动刷新也不能跳过限流等待。其他失败自动等待 1 分钟，允许手动重试。
-- 401/403 清除当前读数；其他请求失败标明刷新失败。组织变化时先清除旧读数，再读取新组织额度。额度与组织只在页面内存保留；启动时删除旧版未绑定账号的 usage / orgId / orgIdAt 本地缓存。
-- 隐藏标签页停止定时请求，但已发出的请求和已排队的回复完成刷新仍可能执行。隐藏额度栏不会停止可见页面轮询。每秒更新倒计时不发送请求。
-- 本次没有可用的 Claude 订阅进行真实页面验证；请求、错误、解析和账号切换使用模拟数据回归，布局另有本地 Chromium 合成页面检查。
+- **组织与用量请求**：每次刷新先请求 `/api/organizations`，仅在能够唯一确定一个具备聊天权限（`chat`）的组织时，才继续请求 `/api/organizations/{id}/usage`。若无符合条件的组织或存在多个候选组织，扩展会明确提示用户前往官方用量页核对，不做主观猜测。
+- **数据字段解析**：仅读取 `five_hour` 与 `seven_day` 字段，且使用率数值必须在 0–100 的有效范围内。遇到未知字段或嵌套额度时不主动推测为 5h/7d；格式非法或无效的重置时间均标记为未知。
+- **刷新频率与去重**：默认每 15 秒刷新一次（设置下限为 10 秒）。每次刷新依次产生组织和额度两个请求；请求去重机制仅在单标签页内生效，不设跨标签页的请求频次预算。
+- **超时与限流策略**（与 Codex 共用）：单个 HTTP 请求超时时间为 15 秒；若收到 429 限流响应，严格遵守 `Retry-After`（支持秒数或 HTTP 日期格式，且至少等待 1 分钟），限流期间手动刷新亦无法跳过等待。其他网络或服务端错误自动等待 1 分钟后重试，期间允许用户手动重试。
+- **状态维护与缓存清理**：收到 401/403 状态码时清空当前读数；其他请求失败则提示刷新失败。检测到组织变动时，先清空旧读数再读取新组织额度。额度与组织信息仅保存在页面内存中；扩展启动时会自动清理旧版本未绑定账号的 `usage`、`orgId`、`orgIdAt` 本地缓存。
+- **后台与休眠控制**：页面处于隐藏标签页时停止定时轮询，但此前已发出的请求及已排队的回复完成刷新仍会继续执行。用户隐藏额度栏不会中断可见页面的后台轮询。每秒更新倒计时仅基于本地时钟计算，不发送网络请求。
+- **验证现状**：当前开发环境暂无可用 Claude 订阅账号，未进行真实订阅页面的线上实测；网络请求、异常处理、数据解析和账号切换均依托模拟数据回归验证，页面布局则由本地 Chromium 合成页面进行自动化检查。
 
 ## Codex
 
-- [OpenAI 官方 Codex 价格与用量说明](https://developers.openai.com/codex/pricing)：说明五小时用量区间、可能适用的每周限制以及官方 usage dashboard。固定消息数量只是估计，扩展不使用它们推算百分比。
-- [AI Usage 扩展](https://github.com/cupcakedev/ai-usage-extension) 的 [UsageService.ts](https://github.com/cupcakedev/ai-usage-extension/blob/HEAD/src/background/services/UsageService.ts) 提供了浏览器会话读取方案：`/api/auth/session` → 带 Bearer 会话令牌访问 `/backend-api/wham/usage`。
-- 本项目读取 `rate_limit.primary_window` / `secondary_window` 的 `used_percent`、`limit_window_seconds`、`reset_at` / `reset_after_seconds`。存在周期长度时按 18000 秒和 604800 秒映射，支持主次顺序颠倒；明确为其他长度的不冒充 5h/7d。长度缺省时使用接口主/次窗口约定。
-- 请求使用会话明确提供的当前账号 ID；不会随意选择账号列表的第一项。多工作区账号应对照官方 Codex 用量页确认显示对象。
-- 不展示 code review、额外模型额度或 credits 余额。这些不等价于用户要求的通用 5h/7d 配额。
-- 上述网页接口是从公开实现核查到的内部接口，不是 OpenAI 官方承诺稳定的开发者 API。
+- **官方依据**：参考 [OpenAI 官方 Codex 价格与用量说明](https://developers.openai.com/codex/pricing)，包含 5 小时用量窗口、可能适用的每周限制及官方用量看板。官方文档中的固定消息数量仅为估算值，扩展不采用消息数折算百分比。
+- **会话读取方案**：参考 [AI Usage 扩展](https://github.com/cupcakedev/ai-usage-extension) 的 [UsageService.ts](https://github.com/cupcakedev/ai-usage-extension/blob/HEAD/src/background/services/UsageService.ts) 实现：先访问 `/api/auth/session` 获取 Bearer 会话令牌，再携带该令牌请求 `/backend-api/wham/usage`。
+- **窗口映射规则**：读取 `rate_limit.primary_window` 与 `secondary_window` 中的 `used_percent`、`limit_window_seconds`、`reset_at` 及 `reset_after_seconds`。若包含窗口周期长度，分别将 18,000 秒与 604,800 秒映射为 5 小时与 7 天（支持主次窗口顺序颠倒）；若明确为其他时长的周期，则不映射为 5h/7d；若未提供周期长度，则按接口默认的主/次窗口约定处理。
+- **账号与多工作区**：严格根据会话中明确提供的当前账号 ID 发起请求，不默认选取账号列表首项。对于拥有多个工作区的账号，建议对照官方 Codex 用量页确认当前展示的目标工作区。
+- **指标范围**：不展示 Code Review、特定模型专属额度或 Credits 余额，因其并不等同于通用的 5 小时 / 7 天额度。
+- **接口属性**：上述接口系通过公开开源实现逆向核查所得的网页内部接口，并非 OpenAI 官方承诺长期稳定的公开 API。
 
 ## Gemini：直接 RPC
 
-- [Google 官方 Gemini Apps limits](https://support.google.com/gemini/answer/16275805?hl=en)：五小时窗口及每周限制。官方用量入口为 Settings → Usage Limits。
-- 参考 [Voyager 请求适配](https://github.com/Nagi-ovo/voyager/blob/82607fd9580a9fbd10f74cb352b9702883113dda/public/usage-observer.js) 与 [额度协议解析](https://github.com/Nagi-ovo/voyager/blob/82607fd9580a9fbd10f74cb352b9702883113dda/src/pages/content/usageStatus/index.ts)，核查的是固定提交 `82607fd9580a9fbd10f74cb352b9702883113dda`。
-- 本项目依据其公开实现揭示的请求路径、参数及返回字段，独立编写适配器；未复制 Voyager 的源码、UI 或库。原项目的 MIT 许可保留。
-- 默认 RPC：`jSf9Qc`，参数字符串：`[]`。通过当前页面的 `WIZ_global_data` 取请求所需的 `SNlM0e`、`cfb2h`、`FdrFJe`，POST 到同源 `[/u/N]/_/BardChatUi/data/batchexecute`，`source-path` 固定使用该账号的 `/usage`。
-- 响应 `wrb.fr` 行中的数据结构为 `[flag, metrics, bool]`，每个 metric 为 `[limit, fractionUsed, periodEnum, [[resetEpochSec, nanos]]]`。周期 1 = 5h，周期 2 = 7d；按枚举映射，不按重置日期排序。小数使用率乘 100，显示上限为 100%；陌生周期跳过。
+- **官方依据**：参考 [Google 官方 Gemini Apps limits](https://support.google.com/gemini/answer/16275805?hl=en) 中的 5 小时及每周限制说明。官方用量入口为 Settings → Usage Limits。
+- **协议参考**：参考 [Voyager 请求适配](https://github.com/Nagi-ovo/voyager/blob/82607fd9580a9fbd10f74cb352b9702883113dda/public/usage-observer.js) 与 [额度协议解析](https://github.com/Nagi-ovo/voyager/blob/82607fd9580a9fbd10f74cb352b9702883113dda/src/pages/content/usageStatus/index.ts) 的公开实现，对应参考版本为固定提交 `82607fd9580a9fbd10f74cb352b9702883113dda`。
+- **独立实现**：本项目依据其披露的请求路径、参数及返回字段独立编写适配逻辑，未直接复制 Voyager 的源代码、UI 或依赖库，并保留原项目 MIT 许可声明。
+- **RPC 调用机制**：默认 RPC 标识为 `jSf9Qc`，参数字符串为 `[]`。从当前页面的全局对象 `WIZ_global_data` 中提取请求所需的 `SNlM0e`、`cfb2h`、`FdrFJe` 参数，向同源路径 `[/u/N]/_/BardChatUi/data/batchexecute` 发起 POST 请求，请求头中的 `source-path` 固定使用当前账号对应的 `/usage`。
+- **响应解析**：响应中 `wrb.fr` 行的数据结构为 `[flag, metrics, bool]`，其中每个 metric 格式为 `[limit, fractionUsed, periodEnum, [[resetEpochSec, nanos]]]`。周期枚举值 1 对应 5 小时，2 对应 7 天；解析严格按枚举值映射，不依据重置时间先后排序。小数形式的 `fractionUsed` 乘以 100 转换为百分比，显示上限为 100%；未知周期直接忽略。
 
-### 两个运行环境的职责
+### 运行环境与职责划分
 
-`gemini-main.js`（构建为自包含的 `gemini-main.bundle.js`）在 MAIN 环境执行同源请求、解析结果，只将标准化百分比及重置时间传给隔离环境；不向外传递会话参数、请求 body 或原始响应。`gemini-usage.js` 在 ISOLATED 环境验证消息来源、请求 ID 和账号，向既有用量条提供数据。使用清单声明注入，无需 scripting 权限。
+- **MAIN 与 ISOLATED 环境协作**：
+  - `gemini-main.js`（编译为自包含产物 `gemini-main.bundle.js`）运行于 MAIN 环境，负责发起同源 RPC 请求并解析响应，仅将标准化后的百分比和重置时间传递给隔离环境；绝不向外暴露会话参数、请求体或原始响应报文。
+  - `gemini-usage.js` 运行于 ISOLATED 环境，负责校验消息来源、请求 ID 及账号一致性，并为前端额度栏提供数据。
+  - 脚本通过扩展清单（manifest）直接声明注入，无需额外的 `scripting` 权限。
 
-MAIN 脚本仅在用户访问 `/usage` 时观察该页的 fetch/XHR 用量候选请求，既不读取对话响应，也不修改原请求/响应。校准只接受空参数 `[]` 的候选 RPC，并要求 5h 与 7d 两个返回百分比都与已渲染的官方页面相符（容忍 1 个百分点的显示舍入误差），候选标识必须唯一。保存值只有按账号隔离的 `geminiRpc:N` 字符串。接口参数或结构改动超出此范围时明确失败，不猜测。
+- **官方页面观察与动态校准**：
+  - MAIN 脚本仅在用户主动访问 `/usage` 页面时，拦截观察该页面的 fetch/XHR 用量请求候选，既不读取正常会话的聊天内容，也不篡改原始请求与响应。
+  - 校准逻辑仅接受请求参数为空数组 `[]` 的候选 RPC，且要求返回的 5 小时与 7 天使用率均与官方页面已渲染的数据一致（允许 1 个百分点的四舍五入误差），且候选标识必须唯一。
+  - 校准成功后，本地仅存储按账号隔离的 `geminiRpc:N` 标识。若接口参数或结构变动超出上述匹配规则，则直接判定为失败，不做主观猜测。
 
-正常刷新通过直接请求完成；定时刷新默认 5 分钟，另通过停止按钮的 DOM 变化判断回复完成并延迟 4 秒刷新。不复制或读取生成响应来判断完成。DOM 变化导致事件未被识别时仍由定时器兜底。
-
-自动刷新不会创建后台标签页。只有用户主动点击官方用量页入口才打开新页面。
+- **刷新策略与标签页控制**：
+  - 常规刷新由直接发起的 RPC 请求完成，空闲状态下默认每 5 分钟定时刷新一次。
+  - 扩展通过监听界面停止生成按钮的 DOM 变动判断回复完成，并在完成后延迟 4 秒触发刷新；此过程不读取或解析生成的回复文本。若 DOM 变动未被正常捕获，仍由定时轮询提供兜底保证。
+  - 自动刷新过程绝不创建后台标签页；仅在用户主动点击“打开官方用量页”时，才在浏览器中打开新标签页。
 
 ## 权限与验证边界
 
-保持 `storage` 和 Claude、ChatGPT、Gemini 主机访问权限，无新增 cookies、scripting 或全站 tabs 权限。MAIN 清单注入要求 Chrome 111+。
+- **权限范围**：仅保留 `storage` 权限以及 Claude、ChatGPT、Gemini 的必要域名访问权限，不新增 `cookies`、`scripting` 或全站 `tabs` 权限。MAIN 环境的清单注入依赖 Chrome 111 或更高版本。
+- **测试覆盖与历史验证**：测试通过模拟会话、伪造额度与虚拟 DOM，覆盖了直接请求、MAIN 与 ISOLATED 启动时序竞争、fetch/XHR 拦截观察、凭证跨环境隔离、官方页面校准、账号切换、未知字段容错、请求超时与 429 限流等场景。
+- **免责与边界说明**：针对 ChatGPT / Gemini 的 Chrome 核心流程及 Gemini 同账号官方用量页对比，系 2026-09-27 的历史实测记录，不代表当前修订版本重新进行了线上全流程检查；当前界面布局均通过本地 Chromium 合成页面回归验证，Claude 真实订阅页面仍待进一步实测。网页内部接口并非平台承诺长期稳定的公共 API，扩展的数据读取方式亦不代表平台官方授权或推荐。
 
-测试使用伪造会话、假额度和模拟 DOM，覆盖直接请求、MAIN/ISOLATED 启动顺序、fetch/XHR 观察、令牌不经消息传递、官方页面校准、账号切换、未知字段、超时和 429 等。ChatGPT / Gemini 的 Chrome 核心流程与 Gemini 同账号官方用量页对照属于 2026-09-27 的历史验证，不代表当前修订已完成线上检查；当前布局通过本地 Chromium 合成页面回归，Claude 真实订阅页面仍未验证。网页内部接口不属于平台对第三方承诺稳定的公开 API，读取方式不代表平台官方授权或推荐。
+## 布局与定位机制
 
-## 布局与验证
+- **输入框定位**（集中于 `src/layout.js`）：优先选取各平台完整的输入框容器（包含附件区与底部工具栏）；对于长文输入场景，遮挡判断仅基于滚动区域的可见范围。若未匹配到站点特定标记，则回退选取最近的外层输入卡片，并明确排除对话气泡区域；当页面垂直空间不足且角落停靠可能遮挡输入框时，自动隐藏额度栏。
+- **视觉风格**：三站统一步调一致的低对比度毛玻璃视觉效果，自动跟随平台明暗主题，并在不支持背景模糊或开启“减少透明度”的系统环境中平滑回退为纯色底色。具体运行方式与验证边界请参阅[测试说明](testing.md)，历史实测详情请参阅[历史验证记录](validation-history.md)。
 
-输入框定位集中在 src/layout.js：优先选择各站完整输入框容器，包含附件和底部按钮；长文遮挡判断仅使用滚动区域可见部分。没有站点标记时回退到最近的输入卡片，排除对话区域；空间不足且角落位置会遮住输入卡片时暂时隐藏。
+## 保留构建产物 Gemini Bundle 的原因
 
-三站共用低对比度毛玻璃样式，跟随站点主题，为不支持模糊和减少透明效果的环境提供实色底色。运行方法与当前验证边界见[测试说明](testing.md)，以往人工检查见[历史验证记录](validation-history.md)。
-
-## 为什么保留生成的 Gemini bundle？
-
-`manifest.json` 给 MAIN 环境使用独立、自包含的 `src/gemini-main.bundle.js`，ISOLATED 环境保留自己的辅助脚本，避免同一路径在两个执行环境中声明时出现注入问题。bundle 由 `scripts/build.cjs` 生成，随仓库提交，以支持下载后直接加载扩展。测试检查清单跨环境文件去重、bundle 与源码同步及独立初始化，因此 bundle 不是可删除的旧副本。
+在 `manifest.json` 中，MAIN 环境需加载独立且自包含的 `src/gemini-main.bundle.js`，而 ISOLATED 环境则加载各自独立的辅助脚本，以避免同一文件路径在两种执行环境中重复声明所导致的注入异常。该 bundle 由构建脚本 `scripts/build.cjs` 编译生成并随代码库一同提交，使用户在克隆或下载解压后无需任何构建步骤即可直接加载扩展。自动化测试会严格验证跨环境脚本引用的唯一性、bundle 与源码的一致性及独立初始化流程，因此该 bundle 为受管代码产物，不可随意移除。
