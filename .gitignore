@@ -4,3 +4,6 @@ releases/
 *.log
 .env
 .env.*
+
+test-results/
+playwright-report/

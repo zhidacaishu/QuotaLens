@@ -5,6 +5,8 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
 const source = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf8');
+const layout = fs.readFileSync(path.join(__dirname, '../src/layout.js'), 'utf8');
+const { flush } = require('./helpers.cjs');
 const providers = fs.readFileSync(path.join(__dirname, '../src/providers.js'), 'utf8');
 const rect = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height });
 
@@ -19,7 +21,7 @@ async function setup(t, { route = '/code/session/test', host = 'claude.ai', widt
   w.MutationObserver = class extends NativeMutationObserver {
     constructor(callback) { super(callback); observers.push(this); }
   };
-  t.after(() => { observers.forEach(observer => observer.disconnect()); dom.window.close(); });
+  t.after(async () => { await flush(); observers.forEach(observer => observer.disconnect()); dom.window.close(); });
   w.innerWidth = width;
   w.innerHeight = 800;
   const boxes = new Map();
@@ -33,10 +35,18 @@ async function setup(t, { route = '/code/session/test', host = 'claude.ai', widt
   const messageListeners = [];
   w.AbortSignal = AbortSignal;
   w.setInterval = (fn, ms) => { ticks.push({ fn, ms }); return ticks.length; };
-  w.clearInterval = () => {};
+  w.clearInterval = id => { if (ticks[id - 1]) ticks[id - 1].cancelled = true; };
   w.setTimeout = (fn, ms) => { fn.delay = ms; pending.push(fn); return pending.length; };
   w.clearTimeout = id => { if (pending[id - 1]) pending[id - 1].cancelled = true; };
-  w.ResizeObserver = class { observe() {} disconnect() {} };
+  const resizeObservers = [];
+  w.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; this.targets = new Set(); resizeObservers.push(this); }
+    observe(target) { this.targets.add(target); }
+    disconnect() { this.targets.clear(); }
+  };
+  const resize = element => resizeObservers.forEach(observer => {
+    if (observer.targets.has(element)) observer.callback([{ target: element }]);
+  });
   w.HTMLElement.prototype.getBoundingClientRect = function () {
     if (this.id === 'cum-bar') {
       const collapsed = this.classList.contains('cum-collapsed');
@@ -54,7 +64,7 @@ async function setup(t, { route = '/code/session/test', host = 'claude.ai', widt
   const stored = { cfg: {}, usage: { five: { pct: 17, resetMs: Date.now() + 3600000 }, weekly: { pct: 38 }, at: Date.now() } };
   w.chrome = {
     storage: {
-      local: { get: (_, cb) => cb(stored), set: data => Object.assign(stored, data) },
+      local: { get: (_, cb) => cb(stored), set: data => Object.assign(stored, data), remove: keys => keys.forEach(key => delete stored[key]) },
       onChanged: { addListener: fn => storageListeners.push(fn) }
     },
     runtime: {
@@ -75,13 +85,14 @@ async function setup(t, { route = '/code/session/test', host = 'claude.ai', widt
     return { ok: true, status: 200, json: async () => url === '/api/organizations' ? [{ uuid: 'test-org', capabilities: ['chat'] }] : { five_hour: { utilization: 17 }, seven_day: { utilization: 38 } } };
   };
   w.eval(providers);
+  w.eval(layout);
   if (missingAdapter) delete w.UsageGemini;
   w.eval(source);
-  for (let i = 0; i < 30; i++) await Promise.resolve();
+  await flush();
   const render = () => ticks.find(tick => tick.ms === 1000).fn();
   const setCfg = cfg => { stored.cfg = cfg; storageListeners.forEach(fn => fn({ cfg: { newValue: cfg } }, 'local')); };
   const message = type => new Promise(resolve => messageListeners.forEach(fn => fn({ type }, {}, resolve)));
-  return { w, boxes, render, setCfg, requests, ticks, pending, messages, message, stored, bar: () => w.document.getElementById('cum-bar') };
+  return { w, boxes, render, resize, resizeObservers, setCfg, requests, ticks, pending, messages, message, stored, bar: () => w.document.getElementById('cum-bar') };
 }
 
 test('Code meter sits above composer without modifying draft, focus or editor tree', async t => {
@@ -224,7 +235,7 @@ test('ChatGPT displays Codex usage, authenticates requests and never persists to
   assert.equal(env.bar().querySelector('.cum-pct').textContent, '1%');
   assert.match(env.bar().textContent, /72%/);
   assert.equal(JSON.stringify(env.stored).includes('test-secret'), false);
-  assert.equal(env.stored.usage.five.pct, 17); // Claude's cache untouched.
+  assert.equal(env.stored.usage, undefined); // Unscoped legacy cache is removed.
   assert.equal((await env.message('cum-status')).provider, 'Codex');
 });
 
@@ -281,11 +292,11 @@ test('Gemini scope change drops old in-flight account result', async t => {
   env.w.history.pushState({}, '', '/u/1/app');
   env.render();
   callbacks[0]({ ok: true, usage: { five: { pct: 99 }, at: Date.now() } });
-  for (let i = 0; i < 12; i++) await Promise.resolve();
+  await flush();
   assert.equal(callbacks.length, 2);
   assert.doesNotMatch(env.bar().textContent, /99%/);
   callbacks[1]({ ok: true, usage: { five: { pct: 12 }, at: Date.now() } });
-  for (let i = 0; i < 12; i++) await Promise.resolve();
+  await flush();
   assert.match(env.bar().textContent, /12%/);
   assert.equal(env.bar().querySelector('.cum-source').href, 'https://gemini.google.com/u/1/usage');
 });
@@ -309,7 +320,7 @@ test('Gemini refreshes after response completion without waiting for the idle in
   const refresh = env.pending.find(fn => fn.delay === 4000 && !fn.cancelled);
   assert.ok(refresh);
   refresh();
-  for (let i = 0; i < 12; i++) await Promise.resolve();
+  await flush();
   assert.equal(env.messages.length, 2);
 });
 
@@ -376,4 +387,104 @@ test('fallback dock hides when it overlaps attachments, even with the editable f
   env.render();
   assert.equal(env.bar().classList.contains('cum-composer'), false);
   assert.equal(env.bar().style.visibility, 'hidden');
+});
+
+for (const endpoint of ['organizations', 'usage']) {
+  for (const code of [401, 403, 429, 500]) {
+    test('Claude ' + endpoint + ' HTTP ' + code + ' updates error state and applies retry policy', async t => {
+      let failed = false;
+      const env = await setup(t, { fetchResponse: (url, options) => {
+        assert.ok(options.signal instanceof AbortSignal);
+        if (failed && (endpoint === 'organizations' ? url === '/api/organizations' : url.endsWith('/usage'))) {
+          return { ok: false, status: code, headers: { get: () => '120' } };
+        }
+        return { ok: true, json: async () => url === '/api/organizations' ? [{ uuid: 'a', capabilities: ['chat'] }] : { five_hour: { utilization: 17 } } };
+      } });
+      failed = true;
+      await env.message('cum-poll');
+      const state = await env.message('cum-status');
+      assert.equal(state.status, 'error');
+      assert.match(state.error, new RegExp(String(code)));
+      assert.equal(state.hasData, code !== 401 && code !== 403);
+      assert.equal(env.stored.usage, undefined);
+      const count = env.requests.length;
+      if (code === 429) await env.message('cum-poll');
+      else env.ticks.find(tick => tick.ms === 15000 && !tick.cancelled).fn();
+      await flush();
+      assert.equal(env.requests.length, count);
+      failed = false;
+      if (code !== 429) {
+        await env.message('cum-poll');
+        assert.equal((await env.message('cum-status')).status, 'ok');
+      }
+    });
+  }
+}
+
+test('Claude clears previous organization readings before fetching a new organization', async t => {
+  let org = 'a', release;
+  const env = await setup(t, { fetchResponse: url => {
+    if (url === '/api/organizations') return { ok: true, json: async () => [{ uuid: org, capabilities: ['chat'] }] };
+    if (org === 'b') return new Promise(resolve => { release = () => resolve({ ok: true, json: async () => ({ five_hour: { utilization: 42 } }) }); });
+    return { ok: true, json: async () => ({ five_hour: { utilization: 17 } }) };
+  } });
+  org = 'b';
+  const refresh = env.message('cum-poll');
+  await flush();
+  assert.equal((await env.message('cum-status')).hasData, false);
+  assert.doesNotMatch(env.bar().textContent, /17%/);
+  release(); await refresh;
+  assert.match(env.bar().textContent, /42%/);
+});
+
+test('Claude does not load legacy cache or guess between multiple organizations', async t => {
+  const env = await setup(t, { fetchResponse: () => ({ ok: true, json: async () => [
+    { uuid: 'a', capabilities: ['chat'] }, { uuid: 'b', capabilities: ['chat'] }
+  ] }) });
+  assert.equal(env.requests.length, 1);
+  assert.equal((await env.message('cum-status')).hasData, false);
+  assert.match(env.bar().textContent, /Multiple Claude organizations/);
+  assert.equal(env.stored.usage, undefined);
+});
+
+test('Claude network timeout releases the in-flight request and can recover', async t => {
+  let timeout = true;
+  const env = await setup(t, { fetchResponse: () => {
+    if (timeout) return Promise.reject(new DOMException('Request timed out', 'TimeoutError'));
+    return { ok: true, json: async () => [] };
+  } });
+  assert.equal((await env.message('cum-status')).status, 'error');
+  timeout = false;
+  await env.message('cum-poll');
+  assert.equal(env.requests.length, 2);
+  assert.match((await env.message('cum-status')).error, /No Claude chat organization/);
+});
+
+test('polling cancels old intervals on settings changes and while hidden', async t => {
+  const env = await setup(t);
+  const original = env.ticks.find(tick => tick.ms === 15000);
+  env.setCfg({ pollSeconds: 20 });
+  assert.equal(original.cancelled, true);
+  assert.equal(env.ticks.filter(tick => tick.ms !== 1000 && !tick.cancelled).length, 1);
+  Object.defineProperty(env.w.document, 'visibilityState', { configurable: true, value: 'hidden' });
+  env.w.document.dispatchEvent(new env.w.Event('visibilitychange'));
+  assert.equal(env.ticks.filter(tick => tick.ms !== 1000 && !tick.cancelled).length, 0);
+  Object.defineProperty(env.w.document, 'visibilityState', { configurable: true, value: 'visible' });
+  env.w.document.dispatchEvent(new env.w.Event('visibilitychange'));
+  assert.equal(env.ticks.filter(tick => tick.ms !== 1000 && !tick.cancelled).length, 1);
+});
+
+test('ResizeObserver schedules placement and disconnects when the bar is hidden', async t => {
+  const env = await setup(t);
+  // Drain any already scheduled initial mutation render.
+  env.pending.filter(fn => fn.delay === 200 && !fn.cancelled).forEach(fn => fn());
+  const before = env.pending.length;
+  env.boxes.set('composer', rect(100, 450, 700, 290));
+  env.resize(env.w.document.getElementById('composer'));
+  const scheduled = env.pending.slice(before).find(fn => fn.delay === 200);
+  assert.ok(scheduled);
+  scheduled();
+  assert.equal(env.bar().getBoundingClientRect().bottom, 444);
+  env.setCfg({ hidden: true });
+  assert.ok(env.resizeObservers.every(observer => observer.targets.size === 0));
 });

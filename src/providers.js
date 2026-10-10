@@ -60,6 +60,31 @@
     return out;
   }
 
+  function parseClaude(data, now) {
+    function quotaWindow(value) {
+      if (!value || percent(value.utilization) === null) return null;
+      var reset = typeof value.resets_at === "string" ? Date.parse(value.resets_at) : NaN;
+      return { pct: value.utilization, resetMs: Number.isFinite(reset) ? reset : null };
+    }
+    return { five: quotaWindow(data && data.five_hour), weekly: quotaWindow(data && data.seven_day), at: now || Date.now() };
+  }
+
+  async function fetchClaude(onAccount) {
+    // Resolve on every refresh: a cached organization can belong to a previous login.
+    var orgs = await json("/api/organizations", { headers: { Accept: "application/json" } });
+    var eligible = Array.isArray(orgs) ? orgs.filter(function (org) {
+      return org && Array.isArray(org.capabilities) && org.capabilities.includes("chat") &&
+        typeof (org.uuid || org.id) === "string" && (org.uuid || org.id);
+    }) : [];
+    if (eligible.length !== 1) {
+      if (onAccount) onAccount(null);
+      throw new Error(eligible.length ? "Multiple Claude organizations found; check the official usage page" : "No Claude chat organization found; check sign-in and the official usage page");
+    }
+    var id = eligible[0].uuid || eligible[0].id;
+    if (onAccount) onAccount(id);
+    return parseClaude(await json("/api/organizations/" + encodeURIComponent(id) + "/usage", { headers: { Accept: "application/json" } }));
+  }
+
   function accountId(session) {
     var user = session.user || {}, account = session.account || {};
     var candidates = [session.active_account_id, session.activeAccountId, session.account_id, session.accountId, account.id, user.account_id, user.accountId];
@@ -144,6 +169,6 @@
   }
 
   root.UsageProviders = { identify: identify, geminiAccount: geminiAccount, isGeminiUsage: isGeminiUsage,
-    usageUrl: usageUrl, parseCodex: parseCodex, fetchCodex: fetchCodex, parseGeminiDocument: parseGeminiDocument,
+    usageUrl: usageUrl, parseClaude: parseClaude, fetchClaude: fetchClaude, parseCodex: parseCodex, fetchCodex: fetchCodex, parseGeminiDocument: parseGeminiDocument,
     percent: percent, labels: { claude: "Claude", codex: "Codex", gemini: "Gemini" } };
 })(globalThis);

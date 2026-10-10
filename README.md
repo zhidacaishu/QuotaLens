@@ -32,6 +32,8 @@ git clone git@github.com:zhidacaishu/QuotaLens.git
 
 **安装不需要 Node.js、npm 或构建。** 仓库已包含可直接加载的脚本和图标。不要删除或移动已加载的文件夹，否则 Chrome 将找不到扩展文件。
 
+Claude 仅在能唯一确定具备 chat 能力的组织时显示额度；多组织账号会提示前往官方用量页核对。
+
 ## 使用与设置
 
 点击 Chrome 工具栏的 QuotaLens 图标打开设置：
@@ -54,7 +56,7 @@ git clone git@github.com:zhidacaishu/QuotaLens.git
 - 只请求 `storage` 及 Claude、ChatGPT、Gemini 对应站点访问权限，没有全站浏览历史、`cookies` 或 `scripting` 权限。
 - 没有遥测、广告或第三方数据服务器。额度请求只发往对应平台。
 - 登录令牌和 Gemini 请求验证参数仅用于当前请求，不写入扩展存储、日志或跨运行环境消息。
-- 设置、Claude 额度缓存及 Gemini 按账号校准的 RPC 标识保存在本机。Codex / Gemini 读数保留在当前页面内存中。
+- 设置及 Gemini 按账号校准的 RPC 标识保存在本机。三站额度读数均只保留在当前页面内存中；旧版 Claude 本地缓存会在启动时清除。
 - 不采集或上传对话内容。扩展读取输入框的位置及回复状态来定位和刷新额度栏，不修改草稿。
 
 这些网页内部接口和页面结构可能发生变化，项目与 Anthropic、OpenAI、Google 无隶属关系。数据解析与适配边界见[数据源说明](docs/providers.md)。
@@ -68,11 +70,11 @@ npm run check
 npm test
 ```
 
-运行时代码使用原生 JavaScript。`jsdom` 用于测试，`sharp` 将 SVG 导出为 Chrome 所需的 PNG；两者均不随扩展运行。
+运行时代码使用原生 JavaScript。`jsdom` 用于测试，`sharp` 将 SVG 导出为 Chrome 所需的 PNG；Playwright 用于本地 Chromium 布局检查；这些开发依赖均不随扩展运行。
 
 | 路径 | 内容 |
 | --- | --- |
-| `src/content.js` / `src/content.css` | 额度栏、定位与刷新 |
+| `src/content.js` / `src/content.css` | 额度栏、状态与刷新；src/layout.js 负责定位与遮挡保护 |
 | `src/providers.js` | 平台识别及额度标准化 |
 | `src/gemini-*.js` | Gemini 直接请求、页面桥接与解析 |
 | `popup.html` / `popup.js` | 工具栏弹窗与设置 |
@@ -81,7 +83,7 @@ npm test
 
 修改 Gemini MAIN 脚本或 RPC 辅助脚本后运行 `npm run build`，同步提交生成的 `src/gemini-main.bundle.js`。修改图标后可单独运行 `npm run build:icons`，导出 16 / 32 / 48 / 128px PNG。
 
-自动化布局测试使用模拟坐标，不代替真实网页验证。目前已在 Chrome 的 ChatGPT / Gemini 页面验证核心流程；Claude 最近的布局改动仅经过自动化回归。
+单元测试使用模拟会话和坐标，另有无需登录的 Chromium 合成页面布局测试。运行方法见[测试说明](docs/testing.md)。本次没有 Claude 订阅，未验证真实订阅页面；ChatGPT / Gemini 的线上检查属于[历史记录](docs/validation-history.md)，不代表本次重新验证。
 
 ## 致谢
 

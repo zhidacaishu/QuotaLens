@@ -8,7 +8,7 @@ const fixture = '<main><section><h2>Current usage</h2><p>10% used</p></section><
 const payload = (five = 0.1, week = 0.3) => [1, [[100, five, 1, [[2000000000, 0]]], [100, week, 2, [[1999999000, 0]]]], true];
 const envelope = (id = 'jSf9Qc', data = payload()) => ")]}'\n\n200\n" + JSON.stringify([['wrb.fr', id, JSON.stringify(data), null]]) + '\n';
 const body = id => new URLSearchParams({ 'f.req': JSON.stringify([[[id, '[]', null, 'generic']]]), at: 'secret' }).toString();
-const flush = async () => { for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve)); };
+const { flush } = require('./helpers.cjs');
 
 function setup(t, { route = '/u/2/app', html = '', fetchImpl, main = true, isolated = true, mockXHR = false } = {}) {
   const dom = new JSDOM(html, { url: 'https://gemini.google.com' + route, runScripts: 'outside-only' });

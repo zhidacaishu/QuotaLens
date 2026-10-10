@@ -1,24 +1,14 @@
-/* QuotaLens — content script (ISOLATED world)
- *
- * Calls Claude's own usage API directly (no waiting, no sniffing):
- *   GET /api/organizations                  -> find org uuid (chat capability)
- *   GET /api/organizations/{uuid}/usage     -> { five_hour:{utilization,resets_at},
- *                                                seven_day:{utilization,resets_at} }
- *
- * Renders two meters ("5 Hrs", "Weekly") just above the composer. Fetches on
- * load, re-polls every pollSeconds while the tab is visible, refreshes on
- * tab-focus, and force-refreshes right after a response finishes streaming.
- * Last values are cached so the bar shows instantly on the next page load.
- */
+/* QuotaLens — quota state, rendering and refresh scheduling (ISOLATED world).
+ * Provider adapters keep readings in this page's memory. Layout lives in layout.js. */
 (function () {
   "use strict";
 
   var TAG = "[UsageMeter]";
   var BAR_ID = "cum-bar";
-  var ORG_TTL = 10 * 60 * 1000; // re-resolve org id at most every 10 min
   var provider = UsageProviders.identify(location.href);
   if (!provider) return;
   var providerLabel = UsageProviders.labels[provider];
+  var layout = UsageLayout.create(provider, schedule);
   var scope = providerScope(), account = null, lastAttempt = 0, retryAt = 0, rateLimited = false, errorText = "";
 
   function providerScope() {
@@ -39,7 +29,6 @@
   var cfg = shallow(DEFAULTS);
   var usage = null;          // { five:{pct,resetMs}|null, weekly:{...}|null, at }
   var status = "loading";    // loading | ok | empty | error
-  var orgId = null, orgIdAt = 0, orgInFlight = null;
   var usageInFlight = null;
   var pollTimer = null, uiTimer = null;
 
@@ -49,7 +38,7 @@
   /* ----------------------------- storage ----------------------------- */
   function loadAll() {
     return new Promise(function (res) {
-      chrome.storage.local.get(["cfg", "usage", "orgId", "orgIdAt"], function (d) {
+      chrome.storage.local.get(["cfg"], function (d) {
         if (d.cfg) {
           var stored = d.cfg;
           cfg = Object.assign(shallow(DEFAULTS), stored);
@@ -59,10 +48,8 @@
             chrome.storage.local.set({ cfg: cfg });
           }
         }
-        // Legacy cache belongs only to Claude. New providers keep readings in
-        // this tab's memory so account changes cannot reuse disk-cached data.
-        if (provider === "claude" && d.usage) { usage = d.usage; status = (usage.five || usage.weekly) ? "ok" : status; }
-        if (provider === "claude" && d.orgId) { orgId = d.orgId; orgIdAt = d.orgIdAt || 0; }
+        // Remove unscoped data from versions that persisted Claude readings.
+        chrome.storage.local.remove(["usage", "orgId", "orgIdAt"]);
         res();
       });
     });
@@ -83,59 +70,7 @@
   });
 
   /* --------------------------- API calls ----------------------------- */
-  function getOrgId() {
-    if (orgId && Date.now() - orgIdAt < ORG_TTL) return Promise.resolve(orgId);
-    if (orgInFlight) return orgInFlight;
-    orgInFlight = fetch("/api/organizations", { credentials: "include", headers: { Accept: "application/json" }, cache: "no-store" })
-      .then(function (r) { if (!r.ok) throw new Error("orgs " + r.status); return r.json(); })
-      .then(function (orgs) {
-        if (!Array.isArray(orgs) || !orgs.length) throw new Error("no orgs");
-        var org = null;
-        for (var i = 0; i < orgs.length; i++) {
-          if (orgs[i] && orgs[i].capabilities && orgs[i].capabilities.indexOf("chat") > -1) { org = orgs[i]; break; }
-        }
-        if (!org) org = orgs[0];
-        var id = org.uuid || org.id;
-        if (!id) throw new Error("no org id");
-        orgId = id; orgIdAt = Date.now();
-        try { chrome.storage.local.set({ orgId: orgId, orgIdAt: orgIdAt }); } catch (_) {}
-        return id;
-      })
-      .then(function (id) { orgInFlight = null; return id; }, function (e) { orgInFlight = null; throw e; });
-    return orgInFlight;
-  }
-
   function loadUsage(force, afterGeneration) {
-    if (provider !== "claude") return loadProviderUsage(force, afterGeneration);
-    if (usageInFlight) return usageInFlight;
-    if (!usage) { status = "loading"; render(); }
-    usageInFlight = getOrgId()
-      .then(function (id) {
-        return fetch("/api/organizations/" + id + "/usage", { credentials: "include", headers: { Accept: "application/json" }, cache: "no-store" });
-      })
-      .then(function (r) {
-        if (r.status === 401 || r.status === 403) throw new Error("auth " + r.status);
-        if (!r.ok) throw new Error("usage " + r.status);
-        return r.json();
-      })
-      .then(function (data) {
-        log("usage payload:", data);
-        usage = parseUsage(data);
-        status = (usage.five || usage.weekly) ? "ok" : "empty";
-        try { chrome.storage.local.set({ usage: usage }); } catch (_) {}
-        render();
-      })
-      .catch(function (err) {
-        log("loadUsage error:", err);
-        // If the org id might be stale, drop it so the next try re-resolves.
-        if (("" + err).indexOf("usage 4") > -1) { orgId = null; }
-        if (!usage) { status = ("" + err).indexOf("auth") > -1 ? "error" : "error"; render(); }
-      })
-      .then(function () { usageInFlight = null; });
-    return usageInFlight;
-  }
-
-  function loadProviderUsage(force, afterGeneration) {
     if (provider === "gemini" && UsageProviders.isGeminiUsage(location.href)) return Promise.resolve();
     if (usageInFlight) return afterGeneration ? usageInFlight.then(function () { return loadUsage(false, true); }) : usageInFlight;
     var now = Date.now();
@@ -147,8 +82,8 @@
     // Initialization errors must enter the same error path as network failures;
     // otherwise a missing adapter leaves the UI stuck on Loading forever.
     var request = Promise.resolve().then(function () {
-      if (provider === "codex") return UsageProviders.fetchCodex(function (nextAccount) {
-        if (account !== nextAccount) { account = nextAccount; usage = null; render(); }
+      if (provider !== "gemini") return UsageProviders[provider === "claude" ? "fetchClaude" : "fetchCodex"](function (nextAccount) {
+        if (account !== nextAccount) { account = nextAccount; usage = null; status = "loading"; render(); }
       });
       if (!globalThis.UsageGemini || typeof globalThis.UsageGemini.fetchUsage !== "function") {
         throw new Error("Gemini adapter failed to initialize. Reload the extension and this page.");
@@ -164,9 +99,10 @@
     }).catch(function (error) {
       if (requestedScope !== scope) return;
       status = "error";
+      log("Usage refresh failed", provider, error.status || 0);
       errorText = error.message || "Unable to read usage";
       rateLimited = error.status === 429;
-      if (error.status === 401 || error.status === 403) usage = null;
+      if (error.status === 401 || error.status === 403) { usage = null; account = null; }
       retryAt = Date.now() + (error.retryMs || (provider === "gemini" ? geminiInterval() : 60000));
       render();
     }).then(function () {
@@ -184,57 +120,6 @@
     if (!rateLimited) retryAt = 0;
     if (document.visibilityState === "visible") loadUsage(false);
   });
-
-  /* ---------------------------- parsing ------------------------------ */
-  // Primary: exact fields. Fallback: scan for utilization/resets pairs.
-  function oneNode(node) {
-    if (node && typeof node.utilization === "number") {
-      // Claude's usage API returns utilization as a 0–100 percentage already
-      // (1 means 1%, 17 means 17%). Do NOT rescale — just clamp to 0–100.
-      // (The old "fraction form" heuristic wrongly turned 1% into 100%.)
-      var p = Math.max(0, Math.min(100, node.utilization));
-      return { pct: p, resetMs: node.resets_at ? Date.parse(node.resets_at) : null };
-    }
-    return null;
-  }
-
-  var WEEKLY_RE = /(seven|7)[\s_-]*day|weekl|week/i;
-  var FIVEH_RE = /(five|5)[\s_-]*(h\b|hr|hour)|hourly|session/i;
-
-  function parseUsage(data) {
-    var five = oneNode(data && data.five_hour);
-    var weekly = oneNode(data && data.seven_day);
-    if (five || weekly) return { five: five, weekly: weekly, at: Date.now() };
-
-    // Fallback scan (in case Anthropic renames the wrapper keys)
-    var found = [];
-    (function scan(obj, key) {
-      if (!obj || typeof obj !== "object") return;
-      if (Array.isArray(obj)) { for (var i = 0; i < obj.length; i++) scan(obj[i], key); return; }
-      if (typeof obj.utilization === "number") {
-        var n = oneNode(obj);
-        if (n) { n.hint = (String(key || "") + " " + Object.keys(obj).join(" ")).toLowerCase(); found.push(n); }
-      }
-      var ks = Object.keys(obj);
-      for (var j = 0; j < ks.length; j++) scan(obj[ks[j]], ks[j]);
-    })(data, "");
-
-    var f = null, w = null;
-    for (var k = 0; k < found.length; k++) {
-      var h = found[k].hint || "";
-      if (!w && WEEKLY_RE.test(h)) { w = found[k]; continue; }
-      if (!f && FIVEH_RE.test(h)) { f = found[k]; }
-    }
-    if (!f && !w && found.length) { f = found[0]; w = found[1] || null; }
-    return { five: f, weekly: w, at: Date.now() };
-  }
-
-  function metersFromUsage(u) {
-    var out = [];
-    if (u && u.five) out.push({ label: "5 Hrs", usedPct: u.five.pct, reset: u.five.resetMs ? new Date(u.five.resetMs) : null });
-    if (u && u.weekly) out.push({ label: "Weekly", usedPct: u.weekly.pct, reset: u.weekly.resetMs ? new Date(u.weekly.resetMs) : null });
-    return out;
-  }
 
   /* ---------------------------- rendering ---------------------------- */
   function colorClass(p) { return p >= 80 ? "cum-red" : p >= 50 ? "cum-amber" : "cum-green"; }
@@ -356,32 +241,31 @@
   }
 
   function render() {
-    restoreGreeting();
+    layout.restoreGreeting();
     var nextScope = providerScope();
     if (nextScope !== scope) {
       scope = nextScope; usage = null; status = "loading"; errorText = ""; lastAttempt = 0; retryAt = 0; rateLimited = false;
       setTimeout(function () { if (document.visibilityState === "visible") loadUsage(false); }, 0);
     }
     if (provider === "gemini" && UsageProviders.isGeminiUsage(location.href)) {
-      if (barEl) barEl.remove(); observeComposer(null, null); return;
+      if (barEl) barEl.remove(); layout.observeComposer(null, null); return;
     }
     if (provider === "gemini" && !lastAttempt && !usageInFlight && document.visibilityState === "visible") {
       setTimeout(function () { loadUsage(false); }, 0);
     }
-    if (cfg.hidden) { if (barEl) { barEl.remove(); barEl = null; els = null; } observeComposer(null, null); return; }
-    var editable = findEditable();
-    var docked = true;
+    if (cfg.hidden) { if (barEl) { barEl.remove(); barEl = null; els = null; } layout.observeComposer(null, null); return; }
+    var editable = layout.findEditable();
     // A detached composer can remain cached across SPA navigation. Remove the
     // old meter when there is no safe target instead of leaving it on screen.
     if (!document.body || (provider === "claude" && !editable && !isCodePage())) {
       if (barEl) barEl.remove();
-      observeComposer(null);
+      layout.observeComposer(null, null);
       return;
     }
 
     if (!barEl) { barEl = document.createElement("div"); barEl.id = BAR_ID; }
     if (!els) { buildStructure(barEl); setTimeout(function () { if (barEl) barEl.style.animation = "none"; }, 360); }
-    barEl.classList.toggle("cum-code-dock", docked);
+    barEl.classList.add("cum-code-dock");
     barEl.setAttribute("role", "region");
     barEl.setAttribute("aria-label", providerLabel + " usage");
     barEl.setAttribute("data-provider", provider);
@@ -398,12 +282,12 @@
     if (barEl.parentElement !== document.body) document.body.appendChild(barEl);
 
     barEl.classList.toggle("cum-collapsed", !!cfg.collapsed);
-    if (cfg.collapsed) { els.main.style.display = "none"; els.chip.style.display = ""; placeBar(docked, editable); return; }
+    if (cfg.collapsed) { els.main.style.display = "none"; els.chip.style.display = ""; layout.placeBar(barEl, editable, cfg.collapsed); return; }
     els.main.style.display = ""; els.chip.style.display = "none";
 
     if (usage && (usage.five || usage.weekly)) {
       els.status.style.display = "none";
-      var compact = docked && (!editable || composerBoundary(editable).getBoundingClientRect().width < 640);
+      var compact = !editable || layout.composerBoundary(editable).getBoundingClientRect().width < 640;
       setMeter(els.five, usage.five, compact);
       setMeter(els.weekly, usage.weekly, compact);
       els.divider.style.display = (usage.five && usage.weekly) ? "" : "none";
@@ -411,6 +295,8 @@
       els.updated.textContent = status === "error" ? "refresh failed" : (ageMin > cfg.staleMinutes ? "stale · " : "") + relPast(usage.at);
       els.updated.title = errorText || "Updated " + relPast(usage.at);
     } else {
+      setMeter(els.five, null, false);
+      setMeter(els.weekly, null, false);
       els.five.row.style.display = "none";
       els.weekly.row.style.display = "none";
       els.divider.style.display = "none";
@@ -419,166 +305,11 @@
         : status === "empty" ? "5h / 7d usage unavailable — open Usage page" : "Loading " + providerLabel + " usage…";
       els.live.style.display = "none"; els.updated.style.display = "none";
     }
-    placeBar(docked, editable);
+    layout.placeBar(barEl, editable, cfg.collapsed);
   }
 
   function isCodePage() {
     return /^(?:\/code|\/cowork\/code)(?:\/|$)/i.test(location.pathname);
-  }
-
-  // Prefer the message composer over search, settings and source-code editors.
-  function findEditable() {
-    var candidates = document.querySelectorAll('[contenteditable="true"], [contenteditable="plaintext-only"], textarea');
-    var best = null, bestScore = -Infinity;
-    for (var i = 0; i < candidates.length; i++) {
-      var editable = candidates[i];
-      if (editable.closest('[role="dialog"], [aria-modal="true"], [role="search"], .monaco-editor, .cm-editor, nav') ||
-          editable.disabled || editable.readOnly || !editable.getClientRects().length) continue;
-      var style = getComputedStyle(editable);
-      if (style.visibility === "hidden" || style.display === "none") continue;
-      var rect = visibleEditorRect(editable);
-      if (rect.width < 100 || rect.height < 20 || rect.bottom <= 0 || rect.top >= window.innerHeight ||
-          rect.right <= 0 || rect.left >= window.innerWidth) continue;
-      var hint = [editable.id, editable.getAttribute("data-testid"), editable.getAttribute("aria-label"), editable.getAttribute("placeholder")].join(" ");
-      var score = rect.bottom / window.innerHeight;
-      if (editable.matches('#prompt-textarea, [data-composer-markdown], .ql-editor[contenteditable="true"]') || editable.closest('rich-textarea')) score += 20;
-      if (/prompt|composer|message|reply|消息|回复/i.test(hint)) score += 10;
-      if (editable.closest("form, fieldset")) score += 2;
-      if (score > bestScore) { best = editable; bestScore = score; }
-    }
-    return best;
-  }
-
-  // Long drafts extend beyond their scrolling viewport. Only their visible
-  // part can obscure the meter, or qualify them as an on-screen composer.
-  function visibleEditorRect(editable) {
-    var box = editable.getBoundingClientRect();
-    var rect = { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
-    for (var parent = editable.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
-      var style = getComputedStyle(parent), clip = parent.getBoundingClientRect();
-      if (/auto|scroll|hidden|clip/.test(style.overflowY || style.overflow)) {
-        rect.top = Math.max(rect.top, clip.top); rect.bottom = Math.min(rect.bottom, clip.bottom);
-      }
-      if (/auto|scroll|hidden|clip/.test(style.overflowX || style.overflow)) {
-        rect.left = Math.max(rect.left, clip.left); rect.right = Math.min(rect.right, clip.right);
-      }
-    }
-    rect.width = Math.max(0, rect.right - rect.left); rect.height = Math.max(0, rect.bottom - rect.top);
-    return rect;
-  }
-
-  // Anchor to the entire composer, including files and controls. Comparing
-  // its height with the editable fails both for tall attachments and for
-  // long drafts clipped by an inner scrolling wrapper.
-  function composerBoundary(editable) {
-    var selectors = provider === "codex"
-      ? '[data-composer-surface-variant], #composer-background, form[data-chatgpt-composer], form[data-type="unified-composer"]'
-      : provider === "gemini" ? 'input-area-v2, .input-area-container, .input-area-fieldset'
-      : '[data-testid="chat-input-container"], [data-testid="composer"]';
-    var known = editable.closest(selectors);
-    if (known && known !== editable) {
-      var knownBox = known.getBoundingClientRect();
-      if (knownBox.width && knownBox.height) return known;
-    }
-    var rect = visibleEditorRect(editable);
-    var parent = editable.parentElement;
-    for (var depth = 0; parent && parent !== document.body && depth < 16; depth++, parent = parent.parentElement) {
-      if (parent.matches('main, article, [role="main"]') ||
-          parent.querySelector('[data-message-author-role], [data-testid="user-message"], [data-testid="assistant-message"], user-query, model-response')) break;
-      var box = parent.getBoundingClientRect();
-      if (!box.width || !box.height) continue;
-      if (box.width > rect.width + 440) break;
-      var style = getComputedStyle(parent);
-      // Stop at the nearest input card; outer forms may include the thread.
-      if (parent.matches("form, fieldset") || parseFloat(style.borderTopWidth) > 0 || parseFloat(style.borderRadius) > 0) return parent;
-    }
-    return editable;
-  }
-
-  var composerObserver = null, observedEditor = null, observedBoundary = null;
-  var greetingAdjustment = null;
-  function restoreGreeting() {
-    if (!greetingAdjustment) return;
-    var saved = greetingAdjustment;
-    if (saved.value) saved.node.style.setProperty("translate", saved.value, saved.priority);
-    else saved.node.style.removeProperty("translate");
-    greetingAdjustment = null;
-  }
-
-  // The centered ChatGPT start screen has a heading immediately above its
-  // composer. Move only that greeting enough to leave an 8px visual gap;
-  // never move conversation headings or change the editor's layout.
-  function makeRoomForGreeting(top, left, width, composerTop) {
-    if (provider !== "codex" || !/^\/(?:$|new\/?$)/.test(location.pathname)) return;
-    var headings = document.querySelectorAll('main h1, main h2, main [role="heading"]');
-    for (var i = 0; i < headings.length; i++) {
-      var heading = headings[i], box = heading.getBoundingClientRect();
-      if (!heading.getClientRects().length || getComputedStyle(heading).visibility === "hidden" ||
-          box.bottom > composerTop || box.bottom < composerTop - 180 ||
-          box.right <= left || box.left >= left + width) continue;
-      var shift = Math.max(0, box.bottom + 8 - top);
-      if (!shift || box.top - shift < 16) continue;
-      greetingAdjustment = { node: heading, value: heading.style.getPropertyValue("translate"), priority: heading.style.getPropertyPriority("translate") };
-      heading.style.setProperty("translate", "0 -" + shift + "px", "important");
-      break;
-    }
-  }
-  function observeComposer(editable, boundary) {
-    if (editable === observedEditor && boundary === observedBoundary) return;
-    if (composerObserver) composerObserver.disconnect();
-    observedEditor = editable; observedBoundary = boundary;
-    if (!editable || typeof ResizeObserver === "undefined") return;
-    if (!composerObserver) composerObserver = new ResizeObserver(schedule);
-    composerObserver.observe(editable);
-    if (boundary && boundary !== editable) composerObserver.observe(boundary);
-  }
-
-  function placeBar(docked, editable) {
-    var boundary = docked && editable ? composerBoundary(editable) : null;
-    observeComposer(docked ? editable : null, boundary);
-    barEl.classList.remove("cum-composer", "cum-narrow");
-    ["top", "left", "right", "width"].forEach(function (key) { barEl.style.removeProperty(key); });
-    if (boundary) {
-      var rect = boundary.getBoundingClientRect();
-      var width = Math.min(rect.width, window.innerWidth - 32);
-      barEl.classList.add("cum-composer");
-      barEl.classList.toggle("cum-narrow", width < 600);
-      if (!cfg.collapsed) barEl.style.width = width + "px";
-      var size = barEl.getBoundingClientRect();
-      var top = rect.top - size.height - 6;
-      // Retain the corner dock if scrolling/expansion leaves no room above.
-      if (top >= 16 && rect.top < window.innerHeight && rect.bottom > 0) {
-        barEl.style.top = top + "px";
-        barEl.style.left = Math.max(16, Math.min(rect.right - size.width, window.innerWidth - size.width - 16)) + "px";
-        barEl.style.right = "auto";
-        makeRoomForGreeting(top, parseFloat(barEl.style.left), size.width, rect.top);
-      } else {
-        barEl.classList.remove("cum-composer", "cum-narrow");
-        barEl.style.removeProperty("width");
-      }
-    }
-    protectEditor(docked, boundary);
-  }
-
-  // If a resized/expanded editor reaches the dock, temporarily hide the meter.
-  // Visibility preserves its dimensions so it can reappear when space returns.
-  function protectEditor(docked, boundary) {
-    var overlaps = false;
-    if (docked) {
-      var bar = barEl.getBoundingClientRect();
-      var editors = Array.from(document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"], [role="dialog"], [aria-modal="true"]'));
-      if (boundary) editors.push(boundary);
-      for (var i = 0; i < editors.length; i++) {
-        var editor = editors[i];
-        if (!editor.getClientRects().length || getComputedStyle(editor).visibility === "hidden") continue;
-        var rect = visibleEditorRect(editor);
-        if (!rect.width || !rect.height) continue;
-        if (bar.left < rect.right + 4 && bar.right > rect.left - 4 && bar.top < rect.bottom + 4 && bar.bottom > rect.top - 4) {
-          overlaps = true; break;
-        }
-      }
-    }
-    barEl.style.visibility = overlaps ? "hidden" : "";
   }
 
   /* ------------------------- live triggers --------------------------- */
@@ -641,7 +372,7 @@
   function init() {
     loadAll().then(function () {
       observeDom();
-      render();                 // instant paint from cache (if any)
+      render();
       restartPolling();         // immediate fetch + interval
       if (document.body) watchGeneration();
       else document.addEventListener("DOMContentLoaded", watchGeneration);

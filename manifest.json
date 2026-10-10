@@ -52,6 +52,7 @@
         "src/providers.js",
         "src/gemini-rpc.js",
         "src/gemini-usage.js",
+        "src/layout.js",
         "src/content.js"
       ],
       "css": [

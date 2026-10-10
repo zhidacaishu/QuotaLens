@@ -80,3 +80,41 @@ test('Gemini ignores injected meter, hidden sections, ambiguous percentages and 
   assert.equal(usage.weekly, null);
   assert.equal(read(t, '<section><h2>Uso actual</h2><p>10%</p></section>').five, null);
 });
+
+test('Claude only accepts exact quota windows with finite percentages and valid reset dates', () => {
+  const usage = p.parseClaude({ five_hour: { utilization: 1, resets_at: '2030-01-01T00:00:00Z' }, seven_day: { utilization: 100, resets_at: 'invalid' } });
+  assert.equal(usage.five.pct, 1);
+  assert.equal(usage.five.resetMs, Date.parse('2030-01-01T00:00:00Z'));
+  assert.equal(usage.weekly.pct, 100);
+  assert.equal(usage.weekly.resetMs, null);
+  for (const value of [NaN, Infinity, -1, 101, '10', null]) {
+    assert.equal(p.parseClaude({ five_hour: { utilization: value } }).five, null);
+  }
+  for (const data of [null, {}, { unrelated_limit: { utilization: 91 } }, { wrapper: { five_hour: { utilization: 20 } } }]) {
+    assert.equal(p.parseClaude(data).five, null);
+    assert.equal(p.parseClaude(data).weekly, null);
+  }
+  assert.equal(p.parseClaude({ five_hour: { utilization: 0 } }).five.pct, 0);
+});
+
+test('Claude requests abort on the configured timeout and decode Retry-After dates', async () => {
+  const signals = [];
+  let response = 'timeout';
+  const local = vm.createContext({ URL, AbortSignal: { timeout(ms) {
+    assert.equal(ms, 15000);
+    const signal = AbortSignal.timeout(5); signals.push(signal); return signal;
+  } }, fetch: async (_, options) => {
+    if (response === 'timeout') return new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+    });
+    return { ok: false, status: 429, headers: { get: () => new Date(Date.now() + 180000).toUTCString() } };
+  } });
+  vm.runInContext(source, local);
+  const keepAlive = setTimeout(() => {}, 1000);
+  try {
+    await assert.rejects(local.UsageProviders.fetchClaude(), { name: 'TimeoutError' });
+    assert.equal(signals[0].aborted, true);
+    response = 'limited';
+    await assert.rejects(local.UsageProviders.fetchClaude(), error => error.status === 429 && error.retryMs > 178000);
+  } finally { clearTimeout(keepAlive); }
+});

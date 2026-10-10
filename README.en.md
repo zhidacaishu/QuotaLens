@@ -32,6 +32,8 @@ git clone git@github.com:zhidacaishu/QuotaLens.git
 
 **Node.js, npm and a build step are not needed for installation.** The repository includes the generated scripts and icons. Keep the loaded folder in place so Chrome can continue reading its files.
 
+Claude usage is shown only when one chat-capable organization can be identified. Accounts with multiple eligible organizations are directed to the official usage page.
+
 ## Controls
 
 Click the QuotaLens icon in Chrome's toolbar:
@@ -54,7 +56,7 @@ Use the arrow on the bar to collapse it, then click the chip to expand. Hover ov
 - Requests `storage` and access to the supported Claude, ChatGPT and Gemini sites only. No all-site history, `cookies` or `scripting` permission.
 - No telemetry, ads or third-party data server. Usage requests go to the respective platform.
 - Session tokens and Gemini request verification parameters are used for requests only; they are not persisted in extension storage, logged or sent through cross-world messages.
-- Settings, Claude usage cache and account-scoped Gemini RPC calibration identifiers are stored locally. Codex / Gemini readings stay in the current page's memory.
+- Settings and account-scoped Gemini RPC calibration identifiers are stored locally. All readings stay in page memory; legacy Claude disk caches are removed at startup.
 - No conversation collection or upload. The extension observes composer geometry and response state to position and refresh the bar; it does not modify drafts.
 
 Internal endpoints and page layouts can change. QuotaLens is not affiliated with Anthropic, OpenAI or Google. Implementation references and parsing boundaries are documented in [Data sources](docs/providers.md) (Chinese).
@@ -68,11 +70,11 @@ npm run check
 npm test
 ```
 
-Runtime code is plain JavaScript. `jsdom` supports tests and `sharp` exports SVG to the PNG icons required by Chrome; neither runs inside the extension.
+Runtime code is plain JavaScript. `jsdom` supports tests and `sharp` exports SVG to the PNG icons required by Chrome; Playwright runs local Chromium layout checks. These development dependencies do not run inside the extension.
 
 | Path | Purpose |
 | --- | --- |
-| `src/content.js` / `src/content.css` | Usage bar, positioning and refresh |
+| `src/content.js` / `src/content.css` | Usage bar, state and refresh; src/layout.js handles positioning and overlap protection |
 | `src/providers.js` | Platform detection and usage normalization |
 | `src/gemini-*.js` | Gemini requests, page bridge and parsing |
 | `popup.html` / `popup.js` | Toolbar popup and settings |
@@ -81,7 +83,7 @@ Runtime code is plain JavaScript. `jsdom` supports tests and `sharp` exports SVG
 
 After editing Gemini MAIN or RPC helpers, run `npm run build` and include the generated `src/gemini-main.bundle.js`. After editing the icon, run `npm run build:icons` to export the 16 / 32 / 48 / 128px PNGs.
 
-Layout tests use simulated geometry and do not replace real-browser checks. Core flows have been checked in Chrome on ChatGPT / Gemini; recent Claude layout changes have only automated regression coverage.
+Unit tests use mocked sessions and geometry; separate Chromium tests exercise synthetic pages without signing in. See [Testing](docs/testing.md) for commands and limitations. No Claude subscription was available for this revision, so the live subscription page remains unverified. Earlier ChatGPT / Gemini checks are preserved as [historical records](docs/validation-history.md), not current live verification.
 
 ## Acknowledgments
 
