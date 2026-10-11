@@ -56,7 +56,7 @@ test('popup clamps polling intervals and preserves settings it does not edit', a
   env.$('#hidden').checked = true; env.$('#debug').checked = true;
   env.$('#poll').dispatchEvent(new env.w.Event('change')); await flush();
   assert.deepEqual(JSON.parse(JSON.stringify(env.stored.cfg)), {
-    pollSeconds: 10, geminiPollMinutes: 1, debug: true, hidden: true, collapsed: true, staleMinutes: 12, showClaude: true, showCodex: true, showGemini: true
+    pollSeconds: 10, geminiPollMinutes: 1, debug: true, hidden: true, collapsed: true, staleMinutes: 12, showClaude: true, showCodex: true, showGemini: true, transparency: 70
   });
 });
 
@@ -76,3 +76,21 @@ for (const [provider, host] of [['Claude', 'claude.ai'], ['Codex', 'chatgpt.com'
     assert.equal(env.$(selector).checked, false);
   });
 }
+
+
+test('transparency updates on input, persists zero, and restores without changing other settings', async t => {
+  const env = await setup(t, 'https://chatgpt.com/c/test');
+  assert.equal(env.$('#transparency').value, '70');
+  for (const percent of [90, 35, 0]) {
+    env.$('#transparency').value = percent;
+    env.$('#transparency').dispatchEvent(new env.w.Event('input'));
+    await flush();
+    assert.equal(env.stored.cfg.transparency, percent);
+    assert.equal(env.$('#transparency-value').textContent, percent + '%');
+    assert.equal(env.stored.cfg.collapsed, true);
+    assert.equal(env.$('#transparency').getAttribute('aria-valuetext'), percent + '% transparent');
+  }
+  env.w.eval(read('popup.js')); await flush();
+  assert.equal(env.$('#transparency').value, '0');
+  assert.equal(env.$('#transparency-value').textContent, '0%');
+});

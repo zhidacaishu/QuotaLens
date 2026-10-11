@@ -10,8 +10,8 @@
   --txt: #dedede;
   --muted: #a6a6a6;
   --label: #b2b2b2;
-  --surface: rgba(24, 24, 24, 0.24);
-  --surface-hover: rgba(30, 30, 30, 0.32);
+  --surface: rgba(24, 24, 24, var(--surface-alpha, 0.3));
+  --surface-hover: rgba(30, 30, 30, var(--surface-alpha, 0.3));
   --border: rgba(255, 255, 255, 0.09);
   --border-hover: rgba(255, 255, 255, 0.15);
   --track: rgba(255, 255, 255, 0.13);
@@ -242,8 +242,8 @@
     --txt: #353535;
     --muted: #626262;
     --label: #575757;
-    --surface: rgba(255, 255, 255, 0.30);
-    --surface-hover: rgba(255, 255, 255, 0.42);
+    --surface: rgba(255, 255, 255, var(--surface-alpha, 0.3));
+    --surface-hover: rgba(255, 255, 255, var(--surface-alpha, 0.3));
     --border: rgba(0, 0, 0, 0.08);
     --border-hover: rgba(0, 0, 0, 0.13);
     --track: rgba(0, 0, 0, 0.10);
@@ -269,8 +269,8 @@ body.light-theme #cum-bar {
   --txt: #353535;
   --muted: #626262;
   --label: #575757;
-  --surface: rgba(255, 255, 255, 0.30);
-  --surface-hover: rgba(255, 255, 255, 0.42);
+  --surface: rgba(255, 255, 255, var(--surface-alpha, 0.3));
+  --surface-hover: rgba(255, 255, 255, var(--surface-alpha, 0.3));
   --border: rgba(0, 0, 0, 0.08);
   --border-hover: rgba(0, 0, 0, 0.13);
   --track: rgba(0, 0, 0, 0.10);
@@ -295,8 +295,8 @@ body.dark-theme #cum-bar {
   --txt: #dedede;
   --muted: #a6a6a6;
   --label: #b2b2b2;
-  --surface: rgba(24, 24, 24, 0.24);
-  --surface-hover: rgba(30, 30, 30, 0.32);
+  --surface: rgba(24, 24, 24, var(--surface-alpha, 0.3));
+  --surface-hover: rgba(30, 30, 30, var(--surface-alpha, 0.3));
   --border: rgba(255, 255, 255, 0.09);
   --border-hover: rgba(255, 255, 255, 0.15);
   --track: rgba(255, 255, 255, 0.13);

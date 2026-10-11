@@ -514,3 +514,19 @@ for (const [provider, host] of [['Claude', 'claude.ai'], ['Codex', 'chatgpt.com'
     assert.ok(env.bar().classList.contains('cum-collapsed'));
   });
 }
+
+test('transparency applies live to expanded and collapsed bars without new quota requests', async t => {
+  const env = await setup(t);
+  const requests = env.requests.length;
+  const intervals = env.ticks.length;
+  for (const [transparency, alpha] of [[0, '1.00'], [90, '0.10'], [-5, '1.00'], [120, '0.10'], ['invalid', '0.30']]) {
+    env.setCfg({ transparency });
+    await flush();
+    assert.equal(env.bar().style.getPropertyValue('--surface-alpha'), alpha);
+    assert.equal(env.requests.length, requests);
+    assert.equal(env.ticks.length, intervals);
+  }
+  env.setCfg({ transparency: 35, collapsed: true });
+  assert.equal(env.bar().style.getPropertyValue('--surface-alpha'), '0.65');
+  assert.ok(env.bar().classList.contains('cum-collapsed'));
+});

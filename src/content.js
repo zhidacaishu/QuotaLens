@@ -26,6 +26,7 @@
     showCodex: true,
     showGemini: true,
     collapsed: false,  // minimized to a small restore chip
+    transparency: 70, // background only; quota text remains fully opaque
     staleMinutes: 10
   };
 
@@ -60,8 +61,9 @@
 
   chrome.storage.onChanged.addListener(function (ch, area) {
     if (area !== "local" || !ch.cfg) return;
+    var previous = cfg;
     cfg = Object.assign(shallow(DEFAULTS), ch.cfg.newValue || {});
-    restartPolling();
+    if (previous.pollSeconds !== cfg.pollSeconds || previous.geminiPollMinutes !== cfg.geminiPollMinutes) restartPolling();
     render();
   });
 
@@ -274,6 +276,8 @@
     }
 
     if (!barEl) { barEl = document.createElement("div"); barEl.id = BAR_ID; }
+    var transparency = typeof cfg.transparency === "number" && Number.isFinite(cfg.transparency) ? Math.max(0, Math.min(90, cfg.transparency)) : DEFAULTS.transparency;
+    barEl.style.setProperty("--surface-alpha", (1 - transparency / 100).toFixed(2));
     if (!els) { buildStructure(barEl); setTimeout(function () { if (barEl) barEl.style.animation = "none"; }, 360); }
     barEl.classList.add("cum-code-dock");
     barEl.setAttribute("role", "region");

@@ -14,7 +14,6 @@
     </header>
 
     <section class="glass connection" aria-label="Current connection">
-      <div class="eyebrow"><span class="connection-dot" aria-hidden="true"></span> YOUR WORKSPACE</div>
       <h2 id="provider">Claude · Codex · Gemini</h2>
       <p id="status" role="status">Connecting…</p>
       <div class="actions">
@@ -23,6 +22,15 @@
           Refresh now
         </button>
         <button id="sync" type="button">Usage page <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></button>
+      </div>
+    </section>
+
+    <section class="settings" aria-labelledby="appearance-heading">
+      <div class="section-heading"><h2 id="appearance-heading" class="section-title">Appearance</h2><span class="theme-hint">Follows browser theme</span></div>
+      <div class="glass appearance-card">
+        <div class="slider-heading"><label for="transparency">Quota bar transparency</label><output id="transparency-value" for="transparency">70%</output></div>
+        <input id="transparency" type="range" min="0" max="90" step="5" value="70" aria-describedby="transparency-help" />
+        <p id="transparency-help" class="detail">Adjust the bar background · text stays crisp</p>
       </div>
     </section>
 
@@ -53,8 +61,7 @@
 
     <footer>
       <div class="privacy-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v5c0 5-8 10-8 10S4 16 4 11V6l8-3Z"/><path d="m8.5 11.5 2.5 2.5 4.5-5"/></svg> Direct from official sources</div>
-      <p>Browser sign-in only. No API key, external server or stored login token.</p>
-      <p>ChatGPT shows Codex quota, not chat message limits.</p>
+      <p>Browser sign-in only. No API key or external server.</p>
     </footer>
   </main>
   <script src="src/providers.js"></script>

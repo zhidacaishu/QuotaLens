@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   var $ = function (s) { return document.querySelector(s); };
-  var DEF = { pollSeconds: 15, geminiPollMinutes: 5, debug: false, hidden: false, showClaude: true, showCodex: true, showGemini: true };
+  var DEF = { pollSeconds: 15, geminiPollMinutes: 5, debug: false, hidden: false, showClaude: true, showCodex: true, showGemini: true, transparency: 70 };
 
   function getCfg() {
     return new Promise(function (resolve) {
@@ -41,10 +41,18 @@
     else if (cfg[{ claude: "showClaude", codex: "showCodex", gemini: "showGemini" }[provider]] === false)
       $("#status").textContent = "Quota bar hidden for " + UsageProviders.labels[provider] + ".";
   }
+  function showTransparency(value) {
+    var percent = typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(90, value)) : DEF.transparency;
+    $("#transparency").value = percent;
+    $("#transparency-value").value = percent + "%";
+    $("#transparency").setAttribute("aria-valuetext", percent + "% transparent");
+    $("#transparency").style.setProperty("--range-progress", percent / 90 * 100 + "%");
+  }
   function save() {
     getCfg().then(function (cfg) {
       cfg.pollSeconds = Math.max(10, Number($("#poll").value) || 15);
       cfg.geminiPollMinutes = Math.max(1, Number($("#gemini-poll").value) || 5);
+      cfg.transparency = Number($("#transparency").value);
       cfg.debug = $("#debug").checked;
       cfg.hidden = $("#hidden").checked;
       cfg.showClaude = $("#show-claude").checked;
@@ -75,8 +83,10 @@
       catch (error) { $("#status").textContent = error.message; }
     });
   });
+  $("#transparency").addEventListener("input", function () { showTransparency(Number(this.value)); save(); });
   ["#poll", "#gemini-poll", "#debug", "#hidden", "#show-claude", "#show-codex", "#show-gemini"].forEach(function (selector) { $(selector).addEventListener("change", save); });
   getCfg().then(function (cfg) {
+    showTransparency(cfg.transparency);
     $("#poll").value = cfg.pollSeconds;
     $("#gemini-poll").value = cfg.geminiPollMinutes;
     $("#debug").checked = cfg.debug;
