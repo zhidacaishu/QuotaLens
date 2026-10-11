@@ -16,6 +16,18 @@ npx playwright install chromium
 npm run test:browser
 ```
 
+## UI 预览与视觉验证
+
+运行 `npm run preview:ui`，打开 `http://127.0.0.1:4173` 可对照浅色、深色额度栏及设置弹窗。
+预览使用实际 CSS 和渲染脚本，额度及浏览器 API 为本地模拟数据，不向平台发送请求。
+端口可通过 `QUOTALENS_PREVIEW_PORT` 修改；浏览器测试固定使用 4173。
+
+`npm run test:browser` 会自动启动本地预览服务器，并将截图写入 `test-results/`。
+新增检查覆盖弹窗 344px 宽度和 Chrome 600px 高度限制（含 Gemini 提示）、设置开关、
+键盘折叠/展开与焦点交接、360px 错误文案换行、减少透明度时的实色降级。
+
+设计参考与实现取舍见 [UI 设计说明](ui-design.md)。
+
 ## 测试覆盖范围
 
 - **单元与集成测试**：覆盖三站额度数据解析、认证与 429 限流响应、请求超时恢复、Claude 组织变更与历史缓存清理、Gemini 跨环境消息桥接与动态校准、轮询定时器销毁、ResizeObserver 生命周期、弹窗交互与设置刷新等。

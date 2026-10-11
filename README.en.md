@@ -94,3 +94,7 @@ Unit tests use mocked sessions and geometry; separate Chromium tests exercise sy
 ## License
 
 [MIT](LICENSE), retaining Suresh Kumar's original copyright notice.
+
+### Per-platform visibility
+
+Use **Show quota on** to toggle Claude, Codex (including ChatGPT), and Gemini independently. All are on by default. Changes apply immediately to open pages and persist across reloads. These switches only affect display; visible pages keep refreshing usage. **Advanced settings → Hide all quota bars** overrides all three switches.

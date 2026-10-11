@@ -86,10 +86,13 @@
     // never move conversation headings or change the editor's layout.
     function makeRoomForGreeting(top, left, width, composerTop) {
       if (provider !== "codex" || !/^\/(?:$|new\/?$)/.test(location.pathname)) return;
-      var headings = document.querySelectorAll('main h1, main h2, main [role="heading"]');
+      // ChatGPT's current home shell has no <main>; use semantic headings
+      // with route, region and proximity guards rather than a main ancestor.
+      var headings = document.querySelectorAll('h1, h2, [role="heading"]');
       for (var i = 0; i < headings.length; i++) {
         var heading = headings[i], box = heading.getBoundingClientRect();
-        if (!heading.getClientRects().length || getComputedStyle(heading).visibility === "hidden" ||
+        if (heading.closest('nav, aside, header, [role="navigation"], [role="dialog"], [aria-modal="true"], [data-message-author-role]') ||
+            !heading.getClientRects().length || getComputedStyle(heading).visibility === "hidden" ||
             box.bottom > composerTop || box.bottom < composerTop - 180 ||
             box.right <= left || box.left >= left + width) continue;
         var shift = Math.max(0, box.bottom + 8 - top);

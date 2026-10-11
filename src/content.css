@@ -1,23 +1,28 @@
-/* QuotaLens — compact quota bar */
+/* QuotaLens — adaptive glass quota bar. No external assets or filter libraries. */
 
 #cum-bar {
-  /* Quiet glass: low-contrast surface, no highlights or glow. */
-  --txt: #c2c5cb;
-  --muted: rgba(225, 228, 233, 0.60);
-  --label: rgba(225, 228, 233, 0.64);
-  --surface: rgba(24, 25, 28, 0.40);
-  --surface-hover: rgba(28, 29, 32, 0.54);
-  --border: rgba(255, 255, 255, 0.07);
-  --border-hover: rgba(255, 255, 255, 0.12);
-  --track: rgba(255, 255, 255, 0.10);
-  --solid: #191a1d;
-  --green-start: #678673;
-  --green-end: #7a9c87;
-  --amber-start: #d29a4f;
-  --amber-end: #e6bd7d;
-  --red-start: #d9775a;
-  --red-end: #e89478;
-  --control-hover: rgba(255, 255, 255, 0.10);
+  /* Neutral, low-opacity glass follows the host page instead of tinting it blue. */
+  --sheen: rgba(255, 255, 255, 0.025);
+  --sheen-end: rgba(255, 255, 255, 0.008);
+  --rim: rgba(255, 255, 255, 0.10);
+  --rim-bottom: rgba(255, 255, 255, 0.015);
+  --focus: #9ccaff;
+  --txt: #dedede;
+  --muted: #a6a6a6;
+  --label: #b2b2b2;
+  --surface: rgba(24, 24, 24, 0.24);
+  --surface-hover: rgba(30, 30, 30, 0.32);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-hover: rgba(255, 255, 255, 0.15);
+  --track: rgba(255, 255, 255, 0.13);
+  --solid: #202020;
+  --green-start: #71a995;
+  --green-end: #91c5b0;
+  --amber-start: #e8b357;
+  --amber-end: #ffe09a;
+  --red-start: #f1857d;
+  --red-end: #ffb1a0;
+  --control-hover: rgba(255, 255, 255, 0.13);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -31,8 +36,8 @@
   color: var(--txt);
   border: 1px solid var(--border);
   border-radius: 16px;
-  -webkit-backdrop-filter: blur(12px) saturate(110%);
-  backdrop-filter: blur(12px) saturate(110%);
+  -webkit-backdrop-filter: blur(12px) saturate(105%);
+  backdrop-filter: blur(12px) saturate(105%);
   animation: cum-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
   transition: background 0.2s ease, border-color 0.2s ease;
 }
@@ -40,8 +45,8 @@
 #cum-bar,
 #cum-bar.cum-code-dock,
 #cum-bar.cum-code-dock.cum-composer {
-  background: var(--surface);
-  box-shadow: none;
+  background: linear-gradient(120deg, var(--sheen), transparent 42%, var(--sheen-end)), var(--surface);
+  box-shadow: inset 0 1px 0 var(--rim), inset 0 -1px 0 var(--rim-bottom), 0 2px 8px rgba(0, 0, 0, 0.045);
 }
 #cum-bar:hover,
 #cum-bar.cum-code-dock:hover,
@@ -76,7 +81,7 @@
   position: relative;
   width: 88px;
   height: 3px;
-  border-radius: 4px;
+  border-radius: 999px;
   background: var(--track);
   overflow: hidden;
 }
@@ -84,7 +89,7 @@
   display: block;
   height: 100%;
   width: 0;
-  border-radius: 4px;
+  border-radius: 999px;
   background: linear-gradient(90deg, var(--green-start), var(--green-end));
   box-shadow: none;
   transition: width 0.55s cubic-bezier(0.2, 0.7, 0.2, 1), background 0.3s ease, box-shadow 0.3s ease;
@@ -97,6 +102,7 @@
   font-variant-numeric: tabular-nums;
   color: var(--txt);
   min-width: 42px;
+  white-space: nowrap;
 }
 #cum-bar .cum-reset { font-size: 11px; color: var(--muted); white-space: nowrap; }
 /* Ellipsis clips vertically too. Leave room for descenders (days / ago)
@@ -126,17 +132,32 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+#cum-bar .cum-min,
+#cum-bar .cum-restore {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  flex-shrink: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+#cum-bar .cum-min:focus-visible,
+#cum-bar .cum-restore:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 #cum-bar .cum-min {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 8px;
+  border-radius: 50%;
   color: var(--muted);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
+#cum-bar .cum-min:active { background: var(--control-hover); }
 #cum-bar .cum-min:hover { background: var(--control-hover); color: var(--txt); }
 #cum-bar .cum-min svg { width: 13px; height: 13px; display: block; }
 
@@ -183,7 +204,7 @@
 #cum-bar.cum-code-dock:not(.cum-composer) .cum-updated { display: none !important; }
 #cum-bar.cum-code-dock .cum-meta { gap: 0; }
 #cum-bar.cum-code-dock .cum-meta > .cum-live { display: none; }
-#cum-bar.cum-code-dock .cum-min { width: 18px; height: 20px; }
+#cum-bar.cum-code-dock .cum-min { width: 24px; height: 24px; }
 #cum-bar.cum-code-dock.cum-collapsed { width: auto; padding: 6px 12px; }
 #cum-bar.cum-code-dock.cum-composer {
   border-radius: 14px;
@@ -213,65 +234,80 @@
 /* System fallback, then explicit ChatGPT / Gemini / Claude themes. */
 @media (prefers-color-scheme: light) {
   #cum-bar {
-    --txt: #53585f;
-    --muted: rgba(36, 39, 45, 0.66);
-    --label: rgba(36, 39, 45, 0.68);
-    --surface: rgba(245, 246, 248, 0.38);
-    --surface-hover: rgba(248, 249, 250, 0.56);
-    --border: rgba(30, 35, 45, 0.07);
-    --border-hover: rgba(30, 35, 45, 0.12);
-    --track: rgba(30, 35, 45, 0.09);
-    --solid: #f4f5f6;
-    --green-start: #587864;
-    --green-end: #6c8975;
-    --amber-start: #94611f;
-    --amber-end: #b77e32;
-    --red-start: #ad4d38;
-    --red-end: #c6664e;
-    --control-hover: rgba(30, 35, 45, 0.07);
+    --sheen: rgba(255, 255, 255, 0.14);
+    --sheen-end: rgba(255, 255, 255, 0.02);
+    --rim: rgba(255, 255, 255, 0.48);
+    --rim-bottom: rgba(0, 0, 0, 0.025);
+    --focus: #2564bc;
+    --txt: #353535;
+    --muted: #626262;
+    --label: #575757;
+    --surface: rgba(255, 255, 255, 0.30);
+    --surface-hover: rgba(255, 255, 255, 0.42);
+    --border: rgba(0, 0, 0, 0.08);
+    --border-hover: rgba(0, 0, 0, 0.13);
+    --track: rgba(0, 0, 0, 0.10);
+    --solid: #f5f5f5;
+    --green-start: #147d6b;
+    --green-end: #339d83;
+    --amber-start: #a66c12;
+    --amber-end: #c38d23;
+    --red-start: #ba4c42;
+    --red-end: #da7160;
+    --control-hover: rgba(0, 0, 0, 0.08);
   }
 }
 html.light #cum-bar,
 html[data-theme="light"] #cum-bar,
 html[data-mode="light"] #cum-bar,
 body.light-theme #cum-bar {
-  --txt: #53585f;
-  --muted: rgba(36, 39, 45, 0.66);
-  --label: rgba(36, 39, 45, 0.68);
-  --surface: rgba(245, 246, 248, 0.38);
-  --surface-hover: rgba(248, 249, 250, 0.56);
-  --border: rgba(30, 35, 45, 0.07);
-  --border-hover: rgba(30, 35, 45, 0.12);
-  --track: rgba(30, 35, 45, 0.09);
-  --solid: #f4f5f6;
-  --green-start: #587864;
-  --green-end: #6c8975;
-  --amber-start: #94611f;
-  --amber-end: #b77e32;
-  --red-start: #ad4d38;
-  --red-end: #c6664e;
-  --control-hover: rgba(30, 35, 45, 0.07);
+  --sheen: rgba(255, 255, 255, 0.14);
+  --sheen-end: rgba(255, 255, 255, 0.02);
+  --rim: rgba(255, 255, 255, 0.48);
+  --rim-bottom: rgba(0, 0, 0, 0.025);
+  --focus: #2564bc;
+  --txt: #353535;
+  --muted: #626262;
+  --label: #575757;
+  --surface: rgba(255, 255, 255, 0.30);
+  --surface-hover: rgba(255, 255, 255, 0.42);
+  --border: rgba(0, 0, 0, 0.08);
+  --border-hover: rgba(0, 0, 0, 0.13);
+  --track: rgba(0, 0, 0, 0.10);
+  --solid: #f5f5f5;
+  --green-start: #147d6b;
+  --green-end: #339d83;
+  --amber-start: #a66c12;
+  --amber-end: #c38d23;
+  --red-start: #ba4c42;
+  --red-end: #da7160;
+  --control-hover: rgba(0, 0, 0, 0.08);
 }
 html.dark #cum-bar,
 html[data-theme="dark"] #cum-bar,
 html[data-mode="dark"] #cum-bar,
 body.dark-theme #cum-bar {
-  --txt: #c2c5cb;
-  --muted: rgba(225, 228, 233, 0.60);
-  --label: rgba(225, 228, 233, 0.64);
-  --surface: rgba(24, 25, 28, 0.40);
-  --surface-hover: rgba(28, 29, 32, 0.54);
-  --border: rgba(255, 255, 255, 0.07);
-  --border-hover: rgba(255, 255, 255, 0.12);
-  --track: rgba(255, 255, 255, 0.10);
-  --solid: #191a1d;
-  --green-start: #678673;
-  --green-end: #7a9c87;
-  --amber-start: #d29a4f;
-  --amber-end: #e6bd7d;
-  --red-start: #d9775a;
-  --red-end: #e89478;
-  --control-hover: rgba(255, 255, 255, 0.10);
+  --sheen: rgba(255, 255, 255, 0.025);
+  --sheen-end: rgba(255, 255, 255, 0.008);
+  --rim: rgba(255, 255, 255, 0.10);
+  --rim-bottom: rgba(255, 255, 255, 0.015);
+  --focus: #9ccaff;
+  --txt: #dedede;
+  --muted: #a6a6a6;
+  --label: #b2b2b2;
+  --surface: rgba(24, 24, 24, 0.24);
+  --surface-hover: rgba(30, 30, 30, 0.32);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-hover: rgba(255, 255, 255, 0.15);
+  --track: rgba(255, 255, 255, 0.13);
+  --solid: #202020;
+  --green-start: #71a995;
+  --green-end: #91c5b0;
+  --amber-start: #e8b357;
+  --amber-end: #ffe09a;
+  --red-start: #f1857d;
+  --red-end: #ffb1a0;
+  --control-hover: rgba(255, 255, 255, 0.13);
 }
 
 /* Preserve legibility when the browser cannot blur or transparency is reduced. */
@@ -285,4 +321,19 @@ body.dark-theme #cum-bar {
 /* accessibility: respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   #cum-bar, #cum-bar * { animation: none !important; transition: none !important; }
+}
+
+/* Keep stale/loading/error indicators honest, including the collapsed chip. */
+#cum-bar[data-state="loading"] .cum-live,
+#cum-bar[data-state="empty"] .cum-live { background: var(--muted); }
+#cum-bar[data-state="error"] .cum-live,
+#cum-bar[data-state="stale"] .cum-live { background: var(--amber-end); }
+@media (prefers-contrast: more) {
+  html:root #cum-bar { --surface: var(--solid); --surface-hover: var(--solid); --border: currentColor; --muted: var(--txt); --label: var(--txt); }
+}
+@media (forced-colors: active) {
+  #cum-bar, #cum-bar.cum-code-dock, #cum-bar.cum-code-dock.cum-composer { background: Canvas; color: CanvasText; border: 1px solid CanvasText; box-shadow: none; backdrop-filter: none; }
+  html:root #cum-bar { --txt: CanvasText; --muted: CanvasText; --label: CanvasText; --focus: Highlight; }
+  #cum-bar .cum-track { border: 1px solid CanvasText; }
+  #cum-bar .cum-fill { background: Highlight; forced-color-adjust: none; }
 }

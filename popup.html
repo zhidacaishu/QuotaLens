@@ -2,51 +2,61 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>QuotaLens</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { width: 280px; margin: 0; font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    .wrap { padding: 14px; }
-    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .brand img { width: 36px; height: 36px; }
-    h1 { font-size: 17px; letter-spacing: -0.4px; margin: 0; }
-    .tagline { margin: 1px 0 0; font-size: 11px; opacity: .65; }
-    #status { font-size: 12px; opacity: 0.75; margin-bottom: 10px; }
-    .row { display: flex; gap: 8px; margin-bottom: 10px; }
-    button { flex: 1; padding: 6px 8px; border: 1px solid rgba(130,130,130,0.4); border-radius: 8px; background: rgba(130,130,130,0.08); cursor: pointer; font: inherit; }
-    button:hover { background: rgba(130,130,130,0.18); }
-    hr { border: none; border-top: 1px solid rgba(130,130,130,0.25); margin: 10px 0; }
-    label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0; }
-    input[type="number"] { width: 64px; padding: 3px 5px; }
-    .muted { opacity: 0.65; }
-    .small { font-size: 11px; }
-    p { margin: 8px 0 0; }
-  </style>
+  <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <div class="wrap">
-    <div class="brand">
-      <img src="icons/quotalens.svg" alt="" width="36" height="36" />
+  <main class="wrap">
+    <header class="brand">
+      <div class="brand-icon"><img src="icons/quotalens.svg" alt="" width="40" height="40" /></div>
       <div><h1>QuotaLens</h1><p class="tagline">Your AI quota, in focus.</p></div>
-    </div>
-    <div id="provider">Claude · Codex · Gemini</div>
-    <div id="status">…</div>
+    </header>
 
-    <div class="row">
-      <button id="refresh">Refresh now</button>
-      <button id="sync">Open Usage page</button>
-    </div>
+    <section class="glass connection" aria-label="Current connection">
+      <div class="eyebrow"><span class="connection-dot" aria-hidden="true"></span> YOUR WORKSPACE</div>
+      <h2 id="provider">Claude · Codex · Gemini</h2>
+      <p id="status" role="status">Connecting…</p>
+      <div class="actions">
+        <button id="refresh" class="primary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 18 17"/></svg>
+          Refresh now
+        </button>
+        <button id="sync" type="button">Usage page <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></button>
+      </div>
+    </section>
 
-    <hr />
+    <section class="settings" aria-labelledby="refresh-heading">
+      <h2 id="refresh-heading" class="section-title">Refresh intervals</h2>
+      <div class="glass settings-card">
+        <label class="setting-row" for="poll"><span>Claude / Codex<span class="detail">While the page is visible</span></span><span class="number-control"><input id="poll" type="number" min="10" step="5" aria-label="Claude / Codex refresh interval in seconds" /><span>sec</span></span></label>
+        <label class="setting-row" for="gemini-poll"><span>Gemini<span class="detail">Also refreshes after replies</span></span><span class="number-control"><input id="gemini-poll" type="number" min="1" step="1" aria-label="Gemini refresh interval in minutes" /><span>min</span></span></label>
+      </div>
+      <p id="gemini-note" class="note" hidden>If usage is unavailable, open Usage page to recalibrate.</p>
+    </section>
 
-    <label>Claude / Codex <span><input id="poll" type="number" min="10" step="5" /> sec</span></label>
-    <label>Gemini <span><input id="gemini-poll" type="number" min="1" step="1" /> min</span></label>
-    <p id="gemini-note" class="muted small" hidden>Gemini refreshes directly in this page after replies and at the idle interval above. If reading fails, open Usage page once to recalibrate.</p>
-    <label>Debug logging <input id="debug" type="checkbox" /></label>
-    <label>Hide bar completely <input id="hidden" type="checkbox" /></label>
+    <section class="settings" aria-labelledby="providers-heading">
+      <h2 id="providers-heading" class="section-title">Show quota on</h2>
+      <div class="glass provider-switches">
+        <label for="show-claude"><span>Claude</span><input class="switch" id="show-claude" type="checkbox" role="switch" aria-label="Show quota on Claude" /></label>
+        <label for="show-codex"><span>Codex</span><input class="switch" id="show-codex" type="checkbox" role="switch" aria-label="Show quota on Codex / ChatGPT" /></label>
+        <label for="show-gemini"><span>Gemini</span><input class="switch" id="show-gemini" type="checkbox" role="switch" aria-label="Show quota on Gemini" /></label>
+      </div>
+    </section>
+    <details class="settings advanced">
+      <summary class="section-title">Advanced settings</summary>
+      <div class="glass settings-card">
+        <label class="setting-row" for="hidden"><span>Hide all quota bars<span class="detail">Overrides the platform switches</span></span><input class="switch" id="hidden" type="checkbox" role="switch" /></label>
+        <label class="setting-row" for="debug"><span>Debug logging<span class="detail">Extra details for troubleshooting</span></span><input class="switch" id="debug" type="checkbox" role="switch" /></label>
+      </div>
+    </details>
 
-    <p class="muted small">Reads official usage sources using your browser sign-in. No API key, external server or stored login token. ChatGPT shows Codex quota, not chat message limits.</p>
-  </div>
+    <footer>
+      <div class="privacy-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v5c0 5-8 10-8 10S4 16 4 11V6l8-3Z"/><path d="m8.5 11.5 2.5 2.5 4.5-5"/></svg> Direct from official sources</div>
+      <p>Browser sign-in only. No API key, external server or stored login token.</p>
+      <p>ChatGPT shows Codex quota, not chat message limits.</p>
+    </footer>
+  </main>
   <script src="src/providers.js"></script>
   <script src="popup.js"></script>
 </body>

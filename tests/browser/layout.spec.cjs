@@ -43,14 +43,55 @@ for (const [host, card] of [
     const bounds = await bar.boundingBox();
     expect(bounds.x).toBeGreaterThanOrEqual(16);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(344);
-    await page.locator('.cum-min').click();
+    await page.getByRole('button', { name: 'Minimize usage', exact: true }).focus();
+    await page.keyboard.press('Enter');
     await expect(bar).toHaveClass(/cum-collapsed/);
     await expect.poll(gap).toBeCloseTo(6, 0);
-    await page.locator('.cum-restore').click();
+    await expect(page.locator('.cum-restore')).toBeFocused();
+    await page.keyboard.press('Space');
     await expect(bar).not.toHaveClass(/cum-collapsed/);
+    await expect(page.locator('.cum-min')).toBeFocused();
     await page.evaluate(() => { document.querySelector('#attachments').style.height = '680px'; });
     await expect(bar).toBeHidden();
     await page.evaluate(() => { document.querySelector('#attachments').style.height = '50px'; });
     await expect(bar).toBeVisible();
   });
 }
+
+// The current ChatGPT home shell has no <main> around its greeting.
+test('ChatGPT home greeting outside main stays clear through collapse and navigation', async ({ page }, testInfo) => {
+  await page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html class="dark"><body>
+    <style>body{margin:0;background:#101010;color:#dedede;font-family:system-ui}#home{position:absolute;top:40%;left:12%;width:76%}h1{text-align:center;font-size:24px;font-weight:400;margin:0 0 24px;line-height:32px}#composer{background:#212121;border:1px solid #303030;border-radius:28px;padding:16px;box-sizing:border-box}#editor{min-height:28px;outline:0}nav{position:absolute;left:0;top:0}nav h2{font-size:12px}</style>
+    <nav><h2 id="sidebar-heading">Recent chats</h2></nav><div id="home"><h1 id="greeting">我们从哪里开始？</h1><div id="composer" data-composer-surface-variant="default"><div id="editor" contenteditable="true" aria-label="Message">Unsent draft</div></div></div></body></html>` }));
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('https://chatgpt.com/');
+  await page.addStyleTag({ content: read('src/content.css') });
+  await page.evaluate(() => {
+    const cfg = {};
+    window.chrome = { storage: { local: { get: (_, cb) => cb({ cfg }), set: values => Object.assign(cfg, values.cfg), remove() {} }, onChanged: { addListener() {} } }, runtime: { onMessage: { addListener() {} } } };
+  });
+  await page.addScriptTag({ content: read('src/providers.js') });
+  await page.evaluate(() => { UsageProviders.fetchCodex = async () => ({five:{pct:47},weekly:{pct:7},at:Date.now()}); });
+  for (const file of ['src/layout.js', 'src/content.js']) await page.addScriptTag({ content: read(file) });
+  const bar = page.locator('#cum-bar');
+  const gap = () => page.evaluate(() => document.querySelector('#cum-bar').getBoundingClientRect().top - document.querySelector('#greeting').getBoundingClientRect().bottom);
+  await expect(bar).toBeVisible();
+  await expect.poll(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#editor').focus();
+  const initialTop = await page.locator('#greeting').evaluate(el => el.getBoundingClientRect().top);
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  await expect.poll(gap).toBeGreaterThanOrEqual(8);
+  await expect(page.locator('#editor')).toBeFocused();
+  expect(await page.locator('#greeting').evaluate(el => el.getBoundingClientRect().top)).toBe(initialTop);
+  expect(await page.locator('#sidebar-heading').evaluate(el => el.style.translate)).toBe('');
+  expect((await bar.boundingBox()).height).toBeLessThanOrEqual(30);
+  await page.screenshot({ path: testInfo.outputPath('chatgpt-home.png') });
+  await page.getByRole('button', {name:'Minimize usage',exact:true}).click();
+  await expect.poll(gap).toBeGreaterThanOrEqual(8);
+  await page.getByRole('button', {name:'Show Codex usage',exact:true}).click();
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect.poll(gap).toBeGreaterThanOrEqual(8);
+  await expect(page.locator('#editor')).toHaveText('Unsent draft');
+  await page.evaluate(() => { history.pushState({}, '', '/c/test'); window.dispatchEvent(new Event('resize')); });
+  await expect.poll(() => page.locator('#greeting').evaluate(el => el.style.translate)).toBe('');
+});

@@ -12,7 +12,7 @@ const rect = (left, top, width, height) => ({ left, top, width, height, right: l
 
 // JSDOM has no layout engine. Supply geometry explicitly to exercise placement
 // and DOM lifecycle with the actual content script; this is not visual QA.
-async function setup(t, { route = '/code/session/test', host = 'claude.ai', width = 1000, fetchResponse, geminiResponse, missingAdapter = false,
+async function setup(t, { route = '/code/session/test', host = 'claude.ai', width = 1000, cfg = {}, fetchResponse, geminiResponse, missingAdapter = false,
   html = '<form id="composer"><textarea placeholder="Reply" id="editor"></textarea></form>' } = {}) {
   const dom = new JSDOM(html, { url: 'https://' + host + route, runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
@@ -61,7 +61,7 @@ async function setup(t, { route = '/code/session/test', host = 'claude.ai', widt
     const r = this.getBoundingClientRect();
     return this.hidden || this.style.display === 'none' || !r.width ? [] : [r];
   };
-  const stored = { cfg: {}, usage: { five: { pct: 17, resetMs: Date.now() + 3600000 }, weekly: { pct: 38 }, at: Date.now() } };
+  const stored = { cfg: cfg, usage: { five: { pct: 17, resetMs: Date.now() + 3600000 }, weekly: { pct: 38 }, at: Date.now() } };
   w.chrome = {
     storage: {
       local: { get: (_, cb) => cb(stored), set: data => Object.assign(stored, data), remove: keys => keys.forEach(key => delete stored[key]) },
@@ -139,8 +139,9 @@ test('narrow viewport and collapsed chip stay within viewport above composer', a
   assert.equal(env.bar().classList.contains('cum-collapsed'), false);
 });
 
-test('ChatGPT home greeting clears the meter and restores on hide or conversation navigation', async t => {
-  const env = await setup(t, { host: 'chatgpt.com', route: '/', html: '<main><h1 id="greeting">Welcome</h1><form id="composer"><textarea id="editor"></textarea></form></main>' });
+for (const wrapper of ['main', 'div']) {
+test('ChatGPT ' + wrapper + ' home greeting clears the meter and restores on hide or conversation navigation', async t => {
+  const env = await setup(t, { host: 'chatgpt.com', route: '/', html: '<' + wrapper + '><h1 id="greeting">Welcome</h1><form id="composer"><textarea id="editor"></textarea></form></' + wrapper + '>' });
   const greeting = env.w.document.getElementById('greeting');
   env.boxes.set('greeting', rect(300, 550, 200, 28));
   env.render();
@@ -156,6 +157,8 @@ test('ChatGPT home greeting clears the meter and restores on hide or conversatio
   env.render();
   assert.equal(greeting.style.translate, '');
 });
+
+}
 
 test('tracks editor expansion and falls back when there is no room above', async t => {
   const env = await setup(t);
@@ -488,3 +491,26 @@ test('ResizeObserver schedules placement and disconnects when the bar is hidden'
   env.setCfg({ hidden: true });
   assert.ok(env.resizeObservers.every(observer => observer.targets.size === 0));
 });
+
+for (const [provider, host] of [['Claude', 'claude.ai'], ['Codex', 'chatgpt.com'], ['Gemini', 'gemini.google.com']]) {
+  test(provider + ' display switch gates initial rendering and reacts live independently', async t => {
+    const key = 'show' + provider;
+    const env = await setup(t, { host, route: '/', cfg: { [key]: false } });
+    assert.equal(env.bar(), null);
+    env.setCfg({ [key]: true });
+    assert.ok(env.bar());
+    const editor = env.w.document.getElementById('editor');
+    editor.value = 'unsent draft'; editor.focus();
+    env.setCfg({ [key]: false });
+    assert.equal(env.bar(), null);
+    env.render();
+    assert.equal(env.bar(), null);
+    assert.equal(editor.value, 'unsent draft');
+    assert.equal(env.w.document.activeElement, editor);
+    const otherKeys = Object.fromEntries(['Claude', 'Codex', 'Gemini'].filter(name => name !== provider).map(name => ['show' + name, false]));
+    env.setCfg({ ...otherKeys, [key]: true, hidden: true });
+    assert.equal(env.bar(), null);
+    env.setCfg({ ...otherKeys, [key]: true, hidden: false, collapsed: true });
+    assert.ok(env.bar().classList.contains('cum-collapsed'));
+  });
+}

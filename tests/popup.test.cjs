@@ -10,7 +10,7 @@ async function setup(t, url, response = { status: 'ok', hasData: true, at: Date.
   const w = dom.window, sent = [], opened = [], stored = { cfg: { collapsed: true, staleMinutes: 12 } };
   t.after(async () => { await flush(); w.close(); });
   w.chrome = {
-    storage: { local: { get: (_, cb) => cb(stored), set: data => Object.assign(stored, data) } },
+    storage: { local: { get: (_, cb) => cb(stored), set: (data, cb) => { Object.assign(stored, data); if (cb) cb(); } } },
     runtime: {}, tabs: {
       query: (_, cb) => cb([{ id: 1, url }]),
       sendMessage: (id, message, cb) => { sent.push(message.type); cb(response); },
@@ -56,6 +56,23 @@ test('popup clamps polling intervals and preserves settings it does not edit', a
   env.$('#hidden').checked = true; env.$('#debug').checked = true;
   env.$('#poll').dispatchEvent(new env.w.Event('change')); await flush();
   assert.deepEqual(JSON.parse(JSON.stringify(env.stored.cfg)), {
-    pollSeconds: 10, geminiPollMinutes: 1, debug: true, hidden: true, collapsed: true, staleMinutes: 12
+    pollSeconds: 10, geminiPollMinutes: 1, debug: true, hidden: true, collapsed: true, staleMinutes: 12, showClaude: true, showCodex: true, showGemini: true
   });
 });
+
+for (const [provider, host] of [['Claude', 'claude.ai'], ['Codex', 'chatgpt.com'], ['Gemini', 'gemini.google.com']]) {
+  test(provider + ' display switch persists independently and restores on reopening', async t => {
+    const env = await setup(t, 'https://' + host + '/');
+    const selector = '#show-' + provider.toLowerCase();
+    assert.equal(env.$(selector).checked, true);
+    env.$(selector).checked = false;
+    env.$(selector).dispatchEvent(new env.w.Event('change'));
+    await flush();
+    assert.equal(env.stored.cfg['show' + provider], false);
+    assert.equal(env.stored.cfg.collapsed, true);
+    for (const other of ['Claude', 'Codex', 'Gemini'].filter(name => name !== provider)) assert.equal(env.stored.cfg['show' + other], true);
+    assert.match(env.$('#status').textContent, /Quota bar hidden/);
+    env.w.eval(read('popup.js')); await flush();
+    assert.equal(env.$(selector).checked, false);
+  });
+}

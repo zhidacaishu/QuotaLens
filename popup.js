@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   var $ = function (s) { return document.querySelector(s); };
-  var DEF = { pollSeconds: 15, geminiPollMinutes: 5, debug: false, hidden: false };
+  var DEF = { pollSeconds: 15, geminiPollMinutes: 5, debug: false, hidden: false, showClaude: true, showCodex: true, showGemini: true };
 
   function getCfg() {
     return new Promise(function (resolve) {
@@ -25,6 +25,7 @@
       $("#gemini-note").hidden = provider !== "gemini";
       chrome.tabs.sendMessage(tab.id, { type: "cum-status" }, function (resp) {
         if (chrome.runtime.lastError || !resp) { $("#status").textContent = "Reload this page to connect the extension."; return; }
+        getCfg().then(function (cfg) { updateVisibilityStatus(cfg, provider); });
         if (resp.status === "error") { $("#status").textContent = resp.error || "Can't reach usage — check sign-in."; return; }
         if (resp.hasData) {
           var seconds = Math.max(0, Math.round((Date.now() - resp.at) / 1000));
@@ -35,13 +36,21 @@
       });
     });
   }
+  function updateVisibilityStatus(cfg, provider) {
+    if (cfg.hidden) $("#status").textContent = "All quota bars hidden in Advanced settings.";
+    else if (cfg[{ claude: "showClaude", codex: "showCodex", gemini: "showGemini" }[provider]] === false)
+      $("#status").textContent = "Quota bar hidden for " + UsageProviders.labels[provider] + ".";
+  }
   function save() {
     getCfg().then(function (cfg) {
       cfg.pollSeconds = Math.max(10, Number($("#poll").value) || 15);
       cfg.geminiPollMinutes = Math.max(1, Number($("#gemini-poll").value) || 5);
       cfg.debug = $("#debug").checked;
       cfg.hidden = $("#hidden").checked;
-      chrome.storage.local.set({ cfg: cfg });
+      cfg.showClaude = $("#show-claude").checked;
+      cfg.showCodex = $("#show-codex").checked;
+      cfg.showGemini = $("#show-gemini").checked;
+      chrome.storage.local.set({ cfg: cfg }, refreshStatus);
     });
   }
   $("#refresh").addEventListener("click", function () {
@@ -66,12 +75,15 @@
       catch (error) { $("#status").textContent = error.message; }
     });
   });
-  ["#poll", "#gemini-poll", "#debug", "#hidden"].forEach(function (selector) { $(selector).addEventListener("change", save); });
+  ["#poll", "#gemini-poll", "#debug", "#hidden", "#show-claude", "#show-codex", "#show-gemini"].forEach(function (selector) { $(selector).addEventListener("change", save); });
   getCfg().then(function (cfg) {
     $("#poll").value = cfg.pollSeconds;
     $("#gemini-poll").value = cfg.geminiPollMinutes;
     $("#debug").checked = cfg.debug;
     $("#hidden").checked = cfg.hidden;
+    $("#show-claude").checked = cfg.showClaude !== false;
+    $("#show-codex").checked = cfg.showCodex !== false;
+    $("#show-gemini").checked = cfg.showGemini !== false;
     refreshStatus();
   });
 })();

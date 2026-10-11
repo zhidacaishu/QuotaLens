@@ -22,6 +22,9 @@
     geminiPollMinutes: 5, // idle fallback; also refresh after a reply completes
     debug: false,
     hidden: false,     // full hide (popup only)
+    showClaude: true,
+    showCodex: true,
+    showGemini: true,
     collapsed: false,  // minimized to a small restore chip
     staleMinutes: 10
   };
@@ -161,7 +164,13 @@
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
   }
 
-  function setCollapsed(v) { cfg.collapsed = v; try { chrome.storage.local.set({ cfg: cfg }); } catch (_) {} render(); }
+  function setCollapsed(v) {
+    var restoreFocus = barEl && barEl.contains(document.activeElement);
+    cfg.collapsed = v;
+    try { chrome.storage.local.set({ cfg: cfg }); } catch (_) {}
+    render();
+    if (restoreFocus && barEl) barEl.querySelector(v ? ".cum-restore" : ".cum-min").focus({ preventScroll: true });
+  }
 
   var barEl = null, els = null;
 
@@ -192,14 +201,14 @@
     var meta = document.createElement("div"); meta.className = "cum-meta";
     var live = document.createElement("span"); live.className = "cum-live"; live.title = "Live";
     var updated = document.createElement("span"); updated.className = "cum-updated";
-    var min = document.createElement("span"); min.className = "cum-min"; min.title = "Minimize";
+    var min = document.createElement("button"); min.type = "button"; min.setAttribute("aria-label", "Minimize usage"); min.className = "cum-min"; min.title = "Minimize";
     min.innerHTML = svg('<path d="M18 15l-6-6-6 6"/>');
     min.addEventListener("click", function () { setCollapsed(true); });
     meta.appendChild(live); meta.appendChild(updated); meta.appendChild(min);
 
     main.appendChild(body); main.appendChild(meta);
 
-    var chip = document.createElement("span"); chip.className = "cum-restore"; chip.title = "Show usage";
+    var chip = document.createElement("button"); chip.type = "button"; chip.setAttribute("aria-label", "Show " + providerLabel + " usage"); chip.className = "cum-restore"; chip.title = "Show usage";
     var chipDot = document.createElement("span"); chipDot.className = "cum-live";
     var chipText = document.createElement("span"); chipText.className = "cum-chip-text"; chipText.textContent = providerLabel + " Usage";
     var chipIcon = document.createElement("span"); chipIcon.className = "cum-chev"; chipIcon.innerHTML = svg('<path d="M6 9l6 6 6-6"/>');
@@ -253,7 +262,8 @@
     if (provider === "gemini" && !lastAttempt && !usageInFlight && document.visibilityState === "visible") {
       setTimeout(function () { loadUsage(false); }, 0);
     }
-    if (cfg.hidden) { if (barEl) { barEl.remove(); barEl = null; els = null; } layout.observeComposer(null, null); return; }
+    var displayKey = { claude: "showClaude", codex: "showCodex", gemini: "showGemini" }[provider];
+    if (cfg.hidden || cfg[displayKey] === false) { if (barEl) { barEl.remove(); barEl = null; els = null; } layout.observeComposer(null, null); return; }
     var editable = layout.findEditable();
     // A detached composer can remain cached across SPA navigation. Remove the
     // old meter when there is no safe target instead of leaving it on screen.
@@ -273,6 +283,7 @@
     try { els.source.href = UsageProviders.usageUrl(location.href); }
     catch (_) { els.source.href = "https://gemini.google.com/app"; }
     var ageMin = usage ? (Date.now() - usage.at) / 60000 : 0;
+    barEl.setAttribute("data-state", status === "ok" && ageMin > cfg.staleMinutes ? "stale" : status);
     var note = status === "error" ? " · refresh failed" : ageMin > cfg.staleMinutes ? " · stale" : "";
     els.source.textContent = providerLabel + " · used" + note;
     els.source.title = (provider === "codex" ? "Codex quota (not ChatGPT message limits). " : "") +
