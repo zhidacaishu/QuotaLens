@@ -42,11 +42,11 @@
       $("#status").textContent = "Quota bar hidden for " + UsageProviders.labels[provider] + ".";
   }
   function showTransparency(value) {
-    var percent = typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(90, value)) : DEF.transparency;
+    var percent = typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(95, Math.round(value))) : DEF.transparency;
     $("#transparency").value = percent;
     $("#transparency-value").value = percent + "%";
     $("#transparency").setAttribute("aria-valuetext", percent + "% transparent");
-    $("#transparency").style.setProperty("--range-progress", percent / 90 * 100 + "%");
+    $("#transparency").style.setProperty("--range-progress", percent / 95 * 100 + "%");
   }
   function save() {
     getCfg().then(function (cfg) {

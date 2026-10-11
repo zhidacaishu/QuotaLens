@@ -193,43 +193,47 @@
   padding: 6px 10px;
   animation: none;
 }
-#cum-bar.cum-code-dock .cum-main { gap: 6px; }
+/* One flexible track per quota; numeric and time columns keep their width. */
+#cum-bar.cum-code-dock .cum-main { gap: 10px; min-height: 20px; }
 #cum-bar.cum-code-dock .cum-body { flex-direction: column; align-items: stretch; gap: 6px; }
-#cum-bar.cum-code-dock .cum-meter { min-width: 0; gap: 5px; }
-#cum-bar.cum-code-dock .cum-label { width: 42px; flex: none; }
-#cum-bar.cum-code-dock .cum-track { width: auto; min-width: 16px; flex: 1; }
-#cum-bar.cum-code-dock .cum-pct { min-width: 30px; font-size: 11px; }
-#cum-bar.cum-code-dock .cum-reset { white-space: nowrap; font-size: 11px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
-#cum-bar.cum-code-dock:not(.cum-composer) .cum-divider,
-#cum-bar.cum-code-dock:not(.cum-composer) .cum-updated { display: none !important; }
-#cum-bar.cum-code-dock .cum-meta { gap: 0; }
-#cum-bar.cum-code-dock .cum-meta > .cum-live { display: none; }
-#cum-bar.cum-code-dock .cum-min { width: 24px; height: 24px; }
+#cum-bar.cum-code-dock .cum-meter {
+  display: grid;
+  grid-template-columns: 42px minmax(12px, 1fr) 38px minmax(0, 56px);
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+}
+#cum-bar.cum-code-dock .cum-label { width: auto; font-size: 10px; letter-spacing: 0.025em; }
+#cum-bar.cum-code-dock .cum-track { width: 100%; min-width: 0; height: 3px; }
+#cum-bar.cum-code-dock .cum-pct { min-width: 0; font-size: 11px; text-align: right; }
+#cum-bar.cum-code-dock .cum-reset {
+  min-width: 0;
+  max-width: 110px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#cum-bar.cum-code-dock .cum-divider,
+#cum-bar.cum-code-dock .cum-updated { display: none; }
+#cum-bar.cum-code-dock .cum-meta { gap: 8px; }
+#cum-bar.cum-code-dock .cum-meta > .cum-live { width: 5px; height: 5px; }
+#cum-bar.cum-code-dock .cum-min { width: 20px; height: 20px; }
 #cum-bar.cum-code-dock.cum-collapsed { width: auto; padding: 6px 12px; }
 #cum-bar.cum-code-dock.cum-composer {
   border-radius: 14px;
-  padding: 4px 14px 4px 16px;
+  padding: 4px 10px 4px 14px;
   border-color: var(--border);
 }
-#cum-bar.cum-code-dock.cum-composer .cum-main { gap: 18px; min-height: 20px; }
-#cum-bar.cum-code-dock.cum-composer .cum-body { flex-direction: row; gap: 16px; align-items: center; }
-#cum-bar.cum-code-dock.cum-composer .cum-meter { flex: 1 1 0; gap: 9px; }
-#cum-bar.cum-code-dock.cum-composer .cum-label { width: auto; font-size: 10px; letter-spacing: 0.025em; }
-#cum-bar.cum-code-dock.cum-composer .cum-track { flex: 1; min-width: 30px; max-width: 140px; height: 3px; }
-#cum-bar.cum-code-dock.cum-composer .cum-pct { min-width: 30px; font-size: 11px; }
-#cum-bar.cum-code-dock.cum-composer .cum-reset { margin-left: auto; font-size: 11px; max-width: 120px; flex-shrink: 1; }
-#cum-bar.cum-code-dock.cum-composer .cum-meta { gap: 9px; }
-#cum-bar.cum-code-dock.cum-composer .cum-meta > .cum-live { display: block; width: 6px; height: 6px; }
-#cum-bar.cum-code-dock.cum-composer .cum-min { width: 20px; height: 20px; }
+#cum-bar.cum-code-dock.cum-composer .cum-body { flex-direction: row; gap: 14px; align-items: center; }
+#cum-bar.cum-code-dock.cum-composer .cum-meter { flex: 1 1 0; grid-template-columns: 42px minmax(12px, 1fr) 38px minmax(0, 94px); }
+#cum-bar.cum-code-dock.cum-composer.cum-compact .cum-meter { grid-template-columns: 42px minmax(12px, 1fr) 38px minmax(0, 56px); }
+#cum-bar.cum-code-dock.cum-composer .cum-divider { display: block; }
+#cum-bar.cum-code-dock.cum-composer .cum-updated { display: block; width: 64px; flex-basis: 64px; }
+#cum-bar.cum-code-dock.cum-composer.cum-compact .cum-updated { display: none; }
+#cum-bar.cum-code-dock.cum-composer.cum-narrow { padding-block: 7px; }
 #cum-bar.cum-code-dock.cum-composer.cum-narrow .cum-body { flex-direction: column; align-items: stretch; gap: 6px; }
 #cum-bar.cum-code-dock.cum-composer.cum-narrow .cum-divider { display: none; }
-#cum-bar.cum-code-dock.cum-composer.cum-narrow .cum-label { width: 46px; }
-#cum-bar.cum-code-dock.cum-composer.cum-narrow .cum-meta > .cum-live,
-#cum-bar.cum-code-dock.cum-composer.cum-narrow .cum-updated { display: none; }
-@media (max-width: 420px) {
-  #cum-bar.cum-code-dock .cum-track { display: none; }
-  #cum-bar.cum-code-dock .cum-reset { margin-left: auto; }
-}
 
 /* System fallback, then explicit ChatGPT / Gemini / Claude themes. */
 @media (prefers-color-scheme: light) {

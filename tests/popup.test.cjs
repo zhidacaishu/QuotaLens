@@ -81,7 +81,7 @@ for (const [provider, host] of [['Claude', 'claude.ai'], ['Codex', 'chatgpt.com'
 test('transparency updates on input, persists zero, and restores without changing other settings', async t => {
   const env = await setup(t, 'https://chatgpt.com/c/test');
   assert.equal(env.$('#transparency').value, '70');
-  for (const percent of [90, 35, 0]) {
+  for (const percent of [95, 94, 37, 1, 0]) {
     env.$('#transparency').value = percent;
     env.$('#transparency').dispatchEvent(new env.w.Event('input'));
     await flush();

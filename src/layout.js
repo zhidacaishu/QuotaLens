@@ -115,13 +115,14 @@
     function placeBar(barEl, editable, collapsed) {
       var boundary = editable ? composerBoundary(editable) : null;
       observeComposer(editable, boundary);
-      barEl.classList.remove("cum-composer", "cum-narrow");
+      barEl.classList.remove("cum-composer", "cum-narrow", "cum-compact");
       ["top", "left", "right", "width"].forEach(function (key) { barEl.style.removeProperty(key); });
       if (boundary) {
         var rect = boundary.getBoundingClientRect();
         var width = Math.min(rect.width, window.innerWidth - 32);
         barEl.classList.add("cum-composer");
-        barEl.classList.toggle("cum-narrow", width < 600);
+        barEl.classList.toggle("cum-narrow", width < 520);
+        barEl.classList.toggle("cum-compact", width < 760);
         if (!collapsed) barEl.style.width = width + "px";
         var size = barEl.getBoundingClientRect();
         var top = rect.top - size.height - 6;
@@ -132,7 +133,7 @@
           barEl.style.right = "auto";
           makeRoomForGreeting(top, parseFloat(barEl.style.left), size.width, rect.top);
         } else {
-          barEl.classList.remove("cum-composer", "cum-narrow");
+          barEl.classList.remove("cum-composer", "cum-narrow", "cum-compact");
           barEl.style.removeProperty("width");
         }
       }

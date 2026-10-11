@@ -42,7 +42,7 @@ Click the QuotaLens icon in Chrome's toolbar:
 | --- | --- |
 | **Refresh now** | Fetch the current platform's usage; still respects server rate limits |
 | **Open Usage page** | Open the platform's official usage page to compare readings |
-| **Quota bar transparency** | Adjust the quota bar background from 0–90% transparency (default 70%). Saves and applies immediately; text and the settings page background stay unchanged |
+| **Quota bar transparency** | Adjust the quota bar background from 0–95% transparency (1% steps, default 70%). Saves and applies immediately; text and the settings page background stay unchanged |
 | **Claude / Codex** | Set the polling interval, at least 10 seconds |
 | **Gemini** | Set the idle refresh interval, at least 1 minute |
 | **Hide bar completely** | Hide the bar; polling in visible pages continues |

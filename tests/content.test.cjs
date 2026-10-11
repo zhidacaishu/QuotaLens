@@ -519,7 +519,7 @@ test('transparency applies live to expanded and collapsed bars without new quota
   const env = await setup(t);
   const requests = env.requests.length;
   const intervals = env.ticks.length;
-  for (const [transparency, alpha] of [[0, '1.00'], [90, '0.10'], [-5, '1.00'], [120, '0.10'], ['invalid', '0.30']]) {
+  for (const [transparency, alpha] of [[0, '1.00'], [95, '0.05'], [94, '0.06'], [37, '0.63'], [-5, '1.00'], [120, '0.05'], ['invalid', '0.30']]) {
     env.setCfg({ transparency });
     await flush();
     assert.equal(env.bar().style.getPropertyValue('--surface-alpha'), alpha);

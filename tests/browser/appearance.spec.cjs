@@ -16,12 +16,12 @@ for (const theme of ['light', 'dark']) {
     await expect(page.locator('#transparency-value')).toHaveText('0%');
     expect(await backgrounds()).toEqual(initialBackgrounds);
     await page.keyboard.press('End');
-    await expect(page.locator('#transparency-value')).toHaveText('90%');
+    await expect(page.locator('#transparency-value')).toHaveText('95%');
     expect(await backgrounds()).toEqual(initialBackgrounds);
     await page.keyboard.press('ArrowLeft');
-    await expect(slider).toHaveAttribute('aria-valuetext', '85% transparent');
+    await expect(slider).toHaveAttribute('aria-valuetext', '94% transparent');
     // Restore the default appearance for visual inspection.
-    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowLeft');
+    for (let i = 0; i < 24; i++) await page.keyboard.press('ArrowLeft');
     const hidden = page.getByRole('switch', { name: 'Show quota on Claude', exact: true });
     await hidden.focus();
     await page.keyboard.press('Space');
@@ -75,14 +75,14 @@ for (const theme of ['light', 'dark']) {
     await page.goto('http://127.0.0.1:4173/provider?theme=' + theme + '&provider=codex');
     const bar = page.locator('#cum-bar');
     await expect(bar).toBeVisible();
-    for (const [transparency, expected] of [[0, 1], [90, .1]]) {
+    for (const [transparency, expected] of [[0, 1], [95, .05]]) {
       await page.evaluate(value => chrome.storage.local.set({ cfg: { transparency: value } }), transparency);
-      await expect.poll(() => bar.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(theme === 'light' ? (expected === 1 ? 'rgb(255, 255, 255)' : 'rgba(255, 255, 255, 0.1)') : (expected === 1 ? 'rgb(24, 24, 24)' : 'rgba(24, 24, 24, 0.1)'));
+      await expect.poll(() => bar.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(theme === 'light' ? (expected === 1 ? 'rgb(255, 255, 255)' : 'rgba(255, 255, 255, 0.05)') : (expected === 1 ? 'rgb(24, 24, 24)' : 'rgba(24, 24, 24, 0.05)'));
       expect(await bar.locator('.cum-pct').first().evaluate(el => getComputedStyle(el).opacity)).toBe('1');
     }
     await page.getByRole('button', { name: 'Minimize usage' }).click();
     await expect(bar).toHaveClass(/cum-collapsed/);
-    expect(await bar.evaluate(el => getComputedStyle(el).backgroundColor)).toContain('0.1)');
+    expect(await bar.evaluate(el => getComputedStyle(el).backgroundColor)).toContain('0.05)');
   });
 }
 
@@ -91,7 +91,7 @@ test('dark helper text retains readable contrast on opaque and reduced-transpare
   await page.goto('http://127.0.0.1:4173/popup-preview');
   const slider = page.getByRole('slider', { name: 'Quota bar transparency' });
   for (const reduced of [false, true]) {
-    await slider.fill(reduced ? '90' : '0');
+    await slider.fill(reduced ? '95' : '0');
     if (reduced) {
       const session = await page.context().newCDPSession(page);
       await session.send('Emulation.setEmulatedMedia', { features: [

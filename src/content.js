@@ -276,7 +276,7 @@
     }
 
     if (!barEl) { barEl = document.createElement("div"); barEl.id = BAR_ID; }
-    var transparency = typeof cfg.transparency === "number" && Number.isFinite(cfg.transparency) ? Math.max(0, Math.min(90, cfg.transparency)) : DEFAULTS.transparency;
+    var transparency = typeof cfg.transparency === "number" && Number.isFinite(cfg.transparency) ? Math.max(0, Math.min(95, Math.round(cfg.transparency))) : DEFAULTS.transparency;
     barEl.style.setProperty("--surface-alpha", (1 - transparency / 100).toFixed(2));
     if (!els) { buildStructure(barEl); setTimeout(function () { if (barEl) barEl.style.animation = "none"; }, 360); }
     barEl.classList.add("cum-code-dock");
@@ -302,7 +302,7 @@
 
     if (usage && (usage.five || usage.weekly)) {
       els.status.style.display = "none";
-      var compact = !editable || layout.composerBoundary(editable).getBoundingClientRect().width < 640;
+      var compact = !editable || Math.min(layout.composerBoundary(editable).getBoundingClientRect().width, window.innerWidth - 32) < 760;
       setMeter(els.five, usage.five, compact);
       setMeter(els.weekly, usage.weekly, compact);
       els.divider.style.display = (usage.five && usage.weekly) ? "" : "none";
@@ -321,6 +321,13 @@
       els.live.style.display = "none"; els.updated.style.display = "none";
     }
     layout.placeBar(barEl, editable, cfg.collapsed);
+    // Placement may fall back to the small corner dock even for a wide
+    // composer. Its fixed time column needs the compact wording as well.
+    var placedCompact = !barEl.classList.contains("cum-composer") || barEl.classList.contains("cum-compact");
+    if (usage && (usage.five || usage.weekly) && placedCompact !== compact) {
+      setMeter(els.five, usage.five, placedCompact);
+      setMeter(els.weekly, usage.weekly, placedCompact);
+    }
   }
 
   function isCodePage() {

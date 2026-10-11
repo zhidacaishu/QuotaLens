@@ -43,7 +43,7 @@ QuotaLens 是一款 Chrome 扩展，将 **Claude、Codex 和 Gemini 的 5 小时
 | --- | --- |
 | **Refresh now** | 立即刷新当前平台的额度；若遇平台限流，仍会严格遵守等待时间 |
 | **Open Usage page** | 打开当前平台的官方用量页，以便核对数据 |
-| **Quota bar transparency** | 调整额度栏背景透明度（0–90%，默认 70%），实时生效并自动保存；文字和设置页背景保持不变 |
+| **Quota bar transparency** | 调整额度栏背景透明度（0–95%，步长 1%，默认 70%），实时生效并自动保存；文字和设置页背景保持不变 |
 | **Claude / Codex** | 设置额度轮询间隔（最低 10 秒） |
 | **Gemini** | 设置空闲状态下的刷新间隔（最低 1 分钟） |
 | **Show quota on: Claude / Codex / Gemini** | 分平台控制额度栏显示，默认开启；关闭立即隐藏，刷新网页后仍保留。Codex 开关同时控制 ChatGPT 页面 |
