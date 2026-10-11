@@ -42,10 +42,11 @@ Click the QuotaLens icon in Chrome's toolbar:
 | --- | --- |
 | **Refresh now** | Fetch the current platform's usage; still respects server rate limits |
 | **Open Usage page** | Open the platform's official usage page to compare readings |
-| **Quota bar transparency** | Adjust the quota bar background from 0–95% transparency (1% steps, default 70%). Saves and applies immediately; text and the settings page background stay unchanged |
-| **Claude / Codex** | Set the polling interval, at least 10 seconds |
-| **Gemini** | Set the idle refresh interval, at least 1 minute |
-| **Hide bar completely** | Hide the bar; polling in visible pages continues |
+| **Quota bar transparency** | Adjust the quota bar background transparency |
+| **Claude / Codex** | Set the polling interval (at least 10 seconds) |
+| **Gemini** | Set the idle refresh interval (at least 1 minute) |
+| **Show quota on: Claude / Codex / Gemini** | Toggle quota bar display per platform (on by default); Codex toggle also applies to ChatGPT |
+| **Advanced settings → Hide all quota bars** | Hide all quota bars globally (polling continues in the background) |
 | **Debug logging** | Enable diagnostic logging |
 
 Use the arrow on the bar to collapse it, then click the chip to expand. Hover over a countdown for its exact reset time, or over the bar for the quota source.
@@ -88,14 +89,10 @@ Unit tests use mocked sessions and geometry; separate Chromium tests exercise sy
 
 ## Acknowledgments
 
-- **[Usage Meter for Claude](https://chromewebstore.google.com/detail/usage-meter-for-claude/jlohkbicmcebjejobahelcfbdmhjfdie)** ([source](https://github.com/suresh8883/Claude-Usage-Meter-Chrome-Extension)): thank you to Suresh Kumar for the original project. QuotaLens extends its foundation, including quota visibility near the composer, Claude session-based usage fetching, progress display and refresh behavior. The original MIT copyright notice is retained.
+- **[Usage Meter for Claude](https://chromewebstore.google.com/detail/usage-meter-for-claude/jlohkbicmcebjejobahelcfbdmhjfdie)** ([source](https://github.com/suresh8883/Claude-Usage-Meter-Chrome-Extension)): provided inspiration for displaying quota directly above the composer, as well as reference implementations for Claude session-based usage fetching, progress display, and refresh behavior.
 - **[Voyager](https://github.com/Nagi-ovo/voyager)**: thank you for publishing the Gemini usage request and protocol parsing implementation. It informed the direct in-page request approach, account routing and quota-window mapping. QuotaLens implements its own adapter using those references, without temporary background tabs. Referenced files and the pinned commit are listed in [Data sources](docs/providers.md).
-- Additional thanks to [AI Usage](https://github.com/cupcakedev/ai-usage-extension) for its Codex browser-session approach, and [Gemini Web Quota Monitor](https://github.com/Hakkinex/Gemini_Web_Quota_Monitor) for inspiring the early adaptation.
+- **Other references**: thanks to [AI Usage](https://github.com/cupcakedev/ai-usage-extension) for its Codex browser-session approach, and [Gemini Web Quota Monitor](https://github.com/Hakkinex/Gemini_Web_Quota_Monitor) for inspiring the early adaptation.
 
 ## License
 
-[MIT](LICENSE), retaining Suresh Kumar's original copyright notice.
-
-### Per-platform visibility
-
-Use **Show quota on** to toggle Claude, Codex (including ChatGPT), and Gemini independently. All are on by default. Changes apply immediately to open pages and persist across reloads. These switches only affect display; visible pages keep refreshing usage. **Advanced settings → Hide all quota bars** overrides all three switches.
+Released under the [MIT](LICENSE) License.
