@@ -53,10 +53,10 @@ test('popup clamps polling intervals and preserves settings it does not edit', a
   const env = await setup(t, 'https://chatgpt.com/c/test');
   assert.match(env.$('#provider').textContent, /Codex/);
   env.$('#poll').value = '2'; env.$('#gemini-poll').value = '0.5';
-  env.$('#hidden').checked = true; env.$('#debug').checked = true;
+  env.$('#debug').checked = true;
   env.$('#poll').dispatchEvent(new env.w.Event('change')); await flush();
   assert.deepEqual(JSON.parse(JSON.stringify(env.stored.cfg)), {
-    pollSeconds: 10, geminiPollMinutes: 1, debug: true, hidden: true, collapsed: true, staleMinutes: 12, showClaude: true, showCodex: true, showGemini: true, transparency: 70
+    pollSeconds: 10, geminiPollMinutes: 1, debug: true, collapsed: true, staleMinutes: 12, showClaude: true, showCodex: true, showGemini: true, transparency: 70
   });
 });
 

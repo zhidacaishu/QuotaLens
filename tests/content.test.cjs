@@ -149,9 +149,9 @@ test('ChatGPT ' + wrapper + ' home greeting clears the meter and restores on hid
   assert.equal(shifted, '0 -30px');
   env.render();
   assert.equal(greeting.style.translate, shifted); // No drift on the next timer tick.
-  env.setCfg({ hidden: true });
+  env.setCfg({ showCodex: false });
   assert.equal(greeting.style.translate, '');
-  env.setCfg({ hidden: false });
+  env.setCfg({ showCodex: true });
   assert.equal(greeting.style.translate, shifted);
   env.w.history.pushState({}, '', '/c/test');
   env.render();
@@ -180,7 +180,7 @@ test('tracks editor expansion and falls back when there is no room above', async
   assert.equal(env.bar().style.visibility, '');
 });
 
-test('SPA switching, composer remount, hidden setting and missing editor recover', async t => {
+test('SPA switching, composer remount, platform switch and missing editor recover', async t => {
   const env = await setup(t);
   const doc = env.w.document;
   const original = env.bar();
@@ -197,9 +197,9 @@ test('SPA switching, composer remount, hidden setting and missing editor recover
   assert.ok(env.bar().classList.contains('cum-code-dock'));
   assert.equal(env.bar().getBoundingClientRect().left, 100);
   assert.equal(env.bar().getBoundingClientRect().width, 700);
-  env.setCfg({ hidden: true });
+  env.setCfg({ showClaude: false });
   assert.equal(env.bar(), null);
-  env.setCfg({ hidden: false });
+  env.setCfg({ showClaude: true });
   assert.ok(env.bar());
   env.w.history.pushState({}, '', '/settings');
   doc.getElementById('composer').remove();
@@ -488,7 +488,7 @@ test('ResizeObserver schedules placement and disconnects when the bar is hidden'
   assert.ok(scheduled);
   scheduled();
   assert.equal(env.bar().getBoundingClientRect().bottom, 444);
-  env.setCfg({ hidden: true });
+  env.setCfg({ showClaude: false });
   assert.ok(env.resizeObservers.every(observer => observer.targets.size === 0));
 });
 
@@ -509,8 +509,8 @@ for (const [provider, host] of [['Claude', 'claude.ai'], ['Codex', 'chatgpt.com'
     assert.equal(env.w.document.activeElement, editor);
     const otherKeys = Object.fromEntries(['Claude', 'Codex', 'Gemini'].filter(name => name !== provider).map(name => ['show' + name, false]));
     env.setCfg({ ...otherKeys, [key]: true, hidden: true });
-    assert.equal(env.bar(), null);
-    env.setCfg({ ...otherKeys, [key]: true, hidden: false, collapsed: true });
+    assert.ok(env.bar(), "removed global setting must not hide the bar");
+    env.setCfg({ ...otherKeys, [key]: true, collapsed: true });
     assert.ok(env.bar().classList.contains('cum-collapsed'));
   });
 }
@@ -529,4 +529,34 @@ test('transparency applies live to expanded and collapsed bars without new quota
   env.setCfg({ transparency: 35, collapsed: true });
   assert.equal(env.bar().style.getPropertyValue('--surface-alpha'), '0.65');
   assert.ok(env.bar().classList.contains('cum-collapsed'));
+});
+
+
+test('removed global hide setting is cleaned without overriding platform preferences', async t => {
+  const env = await setup(t, { cfg: { hidden: true, collapsed: true, showClaude: false } });
+  assert.equal(env.stored.cfg.hidden, undefined);
+  assert.equal(env.stored.cfg.collapsed, true);
+  assert.equal(env.bar(), null);
+  env.setCfg({ showClaude: true, hidden: true });
+  assert.ok(env.bar());
+});
+
+test('Gemini inline refresh bypasses idle interval, deduplicates, and respects rate limits', async t => {
+  const env = await setup(t, { host: 'gemini.google.com', route: '/app' });
+  const button = env.bar().querySelector('.cum-refresh');
+  let calls = 0, finish;
+  env.w.UsageGemini.fetchUsage = () => { calls++; return new Promise(resolve => { finish = resolve; }); };
+  button.click(); button.click(); await flush();
+  assert.equal(calls, 1);
+  assert.equal(button.getAttribute('aria-busy'), 'true');
+  finish({ five: { pct: 42 }, weekly: { pct: 67 }, at: Date.now() }); await flush();
+  assert.equal(button.getAttribute('aria-disabled'), 'false');
+  assert.equal(env.bar().querySelector('.cum-pct').textContent, '42%');
+  env.w.UsageGemini.fetchUsage = async () => { calls++; const error = new Error('Rate limited'); error.status = 429; error.retryMs = 60000; throw error; };
+  button.click(); await flush();
+  assert.equal(button.getAttribute('aria-disabled'), 'true');
+  assert.match(button.title, /retry in/);
+  assert.equal(env.bar().querySelector('.cum-meta .cum-live').textContent, '!');
+  button.click(); await env.message('cum-poll');
+  assert.equal(calls, 2);
 });

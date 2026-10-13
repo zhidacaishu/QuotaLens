@@ -21,7 +21,6 @@
     pollSeconds: 15,   // live-ish refresh while tab is visible
     geminiPollMinutes: 5, // idle fallback; also refresh after a reply completes
     debug: false,
-    hidden: false,     // full hide (popup only)
     showClaude: true,
     showCodex: true,
     showGemini: true,
@@ -46,9 +45,9 @@
         if (d.cfg) {
           var stored = d.cfg;
           cfg = Object.assign(shallow(DEFAULTS), stored);
-          // migrate older "✕ = hidden with no way back" state
-          if (typeof stored.collapsed === "undefined" && cfg.hidden) {
-            cfg.hidden = false;
+          // The global hide switch was removed; platform switches remain authoritative.
+          if (Object.prototype.hasOwnProperty.call(stored, "hidden")) {
+            delete cfg.hidden;
             chrome.storage.local.set({ cfg: cfg });
           }
         }
@@ -63,6 +62,7 @@
     if (area !== "local" || !ch.cfg) return;
     var previous = cfg;
     cfg = Object.assign(shallow(DEFAULTS), ch.cfg.newValue || {});
+    delete cfg.hidden;
     if (previous.pollSeconds !== cfg.pollSeconds || previous.geminiPollMinutes !== cfg.geminiPollMinutes) restartPolling();
     render();
   });
@@ -112,8 +112,10 @@
       render();
     }).then(function () {
       usageInFlight = null;
+      render();
       if (requestedScope !== scope && document.visibilityState === "visible") loadUsage(false);
     });
+    render();
     return usageInFlight;
   }
 
@@ -206,7 +208,15 @@
     var min = document.createElement("button"); min.type = "button"; min.setAttribute("aria-label", "Minimize usage"); min.className = "cum-min"; min.title = "Minimize";
     min.innerHTML = svg('<path d="M18 15l-6-6-6 6"/>');
     min.addEventListener("click", function () { setCollapsed(true); });
-    meta.appendChild(live); meta.appendChild(updated); meta.appendChild(min);
+    meta.appendChild(live); meta.appendChild(updated);
+    var refresh = null;
+    if (provider === "gemini") {
+      refresh = document.createElement("button"); refresh.type = "button"; refresh.className = "cum-refresh";
+      refresh.innerHTML = svg('<path d="M20 7v5h-5M20 12a8 8 0 1 0-2.34 5.66"/>');
+      refresh.addEventListener("click", function () { if (refresh.getAttribute("aria-disabled") !== "true") loadUsage(true); });
+      meta.appendChild(refresh);
+    }
+    meta.appendChild(min);
 
     main.appendChild(body); main.appendChild(meta);
 
@@ -220,7 +230,7 @@
     var source = document.createElement("a"); source.className = "cum-source";
     source.target = "_blank"; source.rel = "noopener noreferrer";
     bar.appendChild(source); bar.appendChild(main); bar.appendChild(chip);
-    els = { source: source, main: main, five: five, divider: divider, weekly: weekly, status: statusEl, live: live, updated: updated, chip: chip };
+    els = { source: source, main: main, five: five, divider: divider, weekly: weekly, status: statusEl, live: live, updated: updated, chip: chip, refresh: refresh };
   }
 
   // Compact dock labels; the full reset timestamp remains in the tooltip.
@@ -265,7 +275,7 @@
       setTimeout(function () { loadUsage(false); }, 0);
     }
     var displayKey = { claude: "showClaude", codex: "showCodex", gemini: "showGemini" }[provider];
-    if (cfg.hidden || cfg[displayKey] === false) { if (barEl) { barEl.remove(); barEl = null; els = null; } layout.observeComposer(null, null); return; }
+    if (cfg[displayKey] === false) { if (barEl) { barEl.remove(); barEl = null; els = null; } layout.observeComposer(null, null); return; }
     var editable = layout.findEditable();
     // A detached composer can remain cached across SPA navigation. Remove the
     // old meter when there is no safe target instead of leaving it on screen.
@@ -288,6 +298,24 @@
     catch (_) { els.source.href = "https://gemini.google.com/app"; }
     var ageMin = usage ? (Date.now() - usage.at) / 60000 : 0;
     barEl.setAttribute("data-state", status === "ok" && ageMin > cfg.staleMinutes ? "stale" : status);
+    var warning = status === "error" || (usage && ageMin > cfg.staleMinutes);
+    var stateLabel = status === "error" ? "Refresh failed" + (usage ? " — showing last reading. " : ". ") + errorText
+      : warning ? "Reading is out of date — updated " + relPast(usage.at) : usage ? "Updated " + relPast(usage.at) : status === "empty" ? "Usage unavailable" : "Loading usage";
+    [els.live, els.chip.querySelector(".cum-live")].forEach(function (indicator) {
+      indicator.textContent = warning ? "!" : "";
+      indicator.title = stateLabel;
+      indicator.setAttribute("role", "img");
+      indicator.setAttribute("aria-label", stateLabel);
+    });
+    if (warning) barEl.title += ". " + stateLabel;
+    if (els.refresh) {
+      var cooling = rateLimited && Date.now() < retryAt;
+      var refreshLabel = usageInFlight ? "Refreshing Gemini usage…" : cooling ? "Rate limited — retry in " + Math.ceil((retryAt - Date.now()) / 1000) + "s" : "Refresh Gemini usage";
+      els.refresh.title = refreshLabel;
+      els.refresh.setAttribute("aria-label", refreshLabel);
+      els.refresh.setAttribute("aria-disabled", String(!!usageInFlight || cooling));
+      els.refresh.setAttribute("aria-busy", String(!!usageInFlight));
+    }
     var note = status === "error" ? " · refresh failed" : ageMin > cfg.staleMinutes ? " · stale" : "";
     els.source.textContent = providerLabel + " · used" + note;
     els.source.title = (provider === "codex" ? "Codex quota (not ChatGPT message limits). " : "") +
@@ -306,7 +334,7 @@
       setMeter(els.five, usage.five, compact);
       setMeter(els.weekly, usage.weekly, compact);
       els.divider.style.display = (usage.five && usage.weekly) ? "" : "none";
-      els.live.style.display = status === "error" ? "none" : ""; els.updated.style.display = "";
+      els.live.style.display = ""; els.updated.style.display = "";
       els.updated.textContent = status === "error" ? "refresh failed" : (ageMin > cfg.staleMinutes ? "stale · " : "") + relPast(usage.at);
       els.updated.title = errorText || "Updated " + relPast(usage.at);
     } else {
@@ -318,7 +346,7 @@
       els.status.style.display = "";
       els.status.textContent = status === "error" ? (errorText || "Can't reach usage — sign in to " + providerLabel)
         : status === "empty" ? "5h / 7d usage unavailable — open Usage page" : "Loading " + providerLabel + " usage…";
-      els.live.style.display = "none"; els.updated.style.display = "none";
+      els.live.style.display = warning ? "" : "none"; els.updated.style.display = "none";
     }
     layout.placeBar(barEl, editable, cfg.collapsed);
     // Placement may fall back to the small corner dock even for a wide

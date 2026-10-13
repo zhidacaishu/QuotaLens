@@ -18,11 +18,12 @@
       <p id="status" role="status">Connecting…</p>
       <div class="actions">
         <button id="refresh" class="primary" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 18 17"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2.34 5.66"/></svg>
           Refresh now
         </button>
         <button id="sync" type="button">Usage page <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></button>
       </div>
+      <p id="gemini-note" class="note" hidden>If usage is unavailable, open Usage page to recalibrate.</p>
     </section>
 
     <section class="settings" aria-labelledby="appearance-heading">
@@ -32,15 +33,6 @@
         <input id="transparency" type="range" min="0" max="95" step="1" value="70" aria-describedby="transparency-help" />
         <p id="transparency-help" class="detail">Adjust the bar background · text stays crisp</p>
       </div>
-    </section>
-
-    <section class="settings" aria-labelledby="refresh-heading">
-      <h2 id="refresh-heading" class="section-title">Refresh intervals</h2>
-      <div class="glass settings-card">
-        <label class="setting-row" for="poll"><span>Claude / Codex<span class="detail">While the page is visible</span></span><span class="number-control"><input id="poll" type="number" min="10" step="5" aria-label="Claude / Codex refresh interval in seconds" /><span>sec</span></span></label>
-        <label class="setting-row" for="gemini-poll"><span>Gemini<span class="detail">Also refreshes after replies</span></span><span class="number-control"><input id="gemini-poll" type="number" min="1" step="1" aria-label="Gemini refresh interval in minutes" /><span>min</span></span></label>
-      </div>
-      <p id="gemini-note" class="note" hidden>If usage is unavailable, open Usage page to recalibrate.</p>
     </section>
 
     <section class="settings" aria-labelledby="providers-heading">
@@ -53,8 +45,14 @@
     </section>
     <details class="settings advanced">
       <summary class="section-title">Advanced settings</summary>
+      <section class="settings" aria-labelledby="refresh-heading">
+        <h2 id="refresh-heading" class="section-title">Refresh intervals</h2>
+        <div class="glass settings-card">
+          <label class="setting-row" for="poll"><span>Claude / Codex<span class="detail">While the page is visible</span></span><span class="number-control"><input id="poll" type="number" min="10" step="5" aria-label="Claude / Codex refresh interval in seconds" /><span>sec</span></span></label>
+          <label class="setting-row" for="gemini-poll"><span>Gemini<span class="detail">Also refreshes after replies</span></span><span class="number-control"><input id="gemini-poll" type="number" min="1" step="1" aria-label="Gemini refresh interval in minutes" /><span>min</span></span></label>
+        </div>
+      </section>
       <div class="glass settings-card">
-        <label class="setting-row" for="hidden"><span>Hide all quota bars<span class="detail">Overrides the platform switches</span></span><input class="switch" id="hidden" type="checkbox" role="switch" /></label>
         <label class="setting-row" for="debug"><span>Debug logging<span class="detail">Extra details for troubleshooting</span></span><input class="switch" id="debug" type="checkbox" role="switch" /></label>
       </div>
     </details>

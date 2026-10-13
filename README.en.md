@@ -43,13 +43,14 @@ Click the QuotaLens icon in Chrome's toolbar:
 | **Refresh now** | Fetch the current platform's usage; still respects server rate limits |
 | **Open Usage page** | Open the platform's official usage page to compare readings |
 | **Quota bar transparency** | Adjust the quota bar background transparency |
-| **Claude / Codex** | Set the polling interval (at least 10 seconds) |
-| **Gemini** | Set the idle refresh interval (at least 1 minute) |
+| **Advanced settings → Claude / Codex** | Set the polling interval (at least 10 seconds) |
+| **Advanced settings → Gemini** | Set the idle refresh interval (at least 1 minute) |
 | **Show quota on: Claude / Codex / Gemini** | Toggle quota bar display per platform (on by default); Codex toggle also applies to ChatGPT |
-| **Advanced settings → Hide all quota bars** | Hide all quota bars globally (polling continues in the background) |
 | **Debug logging** | Enable diagnostic logging |
 
 Use the arrow on the bar to collapse it, then click the chip to expand. Hover over a countdown for its exact reset time, or over the bar for the quota source.
+
+Gemini also has an inline refresh button with busy feedback and rate-limit cooldown protection. Failed or stale readings retain a visible warning in compact and collapsed layouts; hover for details.
 
 ## Data, permissions and privacy
 
