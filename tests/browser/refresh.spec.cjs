@@ -1,9 +1,10 @@
 const { test, expect } = require('@playwright/test');
 
+for (const provider of ['gemini', 'codex']) {
 for (const theme of ['light', 'dark']) {
-  test(theme + ' Gemini refresh and warning fit all bar widths', async ({ page }, testInfo) => {
+  test(theme + ' ' + provider + ' refresh and warning fit all bar widths', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('http://127.0.0.1:4173/provider?theme=' + theme + '&provider=gemini');
+    await page.goto('http://127.0.0.1:4173/provider?theme=' + theme + '&provider=' + provider);
     const bar = page.locator('#cum-bar');
     const refresh = bar.locator('.cum-refresh');
     await expect(refresh).toHaveAttribute('aria-disabled', 'false');
@@ -20,10 +21,12 @@ for (const theme of ['light', 'dark']) {
       await bar.screenshot({ path: testInfo.outputPath('gemini-' + width + '.png') });
     }
     await page.locator('#composer').evaluate(el => el.style.width = '240px');
-    await page.evaluate(() => {
+    await page.evaluate(provider => {
       window.refreshCalls = 0;
-      UsageGemini.fetchUsage = () => { window.refreshCalls++; return new Promise((resolve, reject) => { window.failRefresh = reject; }); };
-    });
+      const fetchUsage = () => { window.refreshCalls++; return new Promise((resolve, reject) => { window.failRefresh = reject; }); };
+      if (provider === 'gemini') UsageGemini.fetchUsage = fetchUsage;
+      else UsageProviders.fetchCodex = fetchUsage;
+    }, provider);
     await refresh.focus(); await page.keyboard.press('Enter');
     await expect(refresh).toHaveAttribute('aria-busy', 'true');
     await page.keyboard.press('Enter');
@@ -36,14 +39,20 @@ for (const theme of ['light', 'dark']) {
     await expect(warning).toHaveAttribute('aria-label', /showing last reading/);
     expect(await bar.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     await bar.screenshot({ path: testInfo.outputPath('gemini-error-240.png') });
-    await page.evaluate(() => { UsageGemini.fetchUsage = async () => ({ five: { pct: 43 }, weekly: { pct: 78 }, at: Date.now() }); });
+    await page.evaluate(provider => {
+      const fetchUsage = async () => ({ five: { pct: 43 }, weekly: { pct: 78 }, at: Date.now() });
+      if (provider === 'gemini') UsageGemini.fetchUsage = fetchUsage;
+      else UsageProviders.fetchCodex = fetchUsage;
+    }, provider);
     await refresh.click();
     await expect(bar).toHaveAttribute('data-state', 'ok');
     await expect(bar.locator('.cum-pct').first()).toHaveText('43%');
     await page.getByRole('button', { name: 'Minimize usage' }).click();
     await expect(refresh).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Show Gemini usage' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Show ' + (provider === 'gemini' ? 'Gemini' : 'Codex') + ' usage' })).toBeFocused();
   });
+}
+
 }
 
 test('Codex compact error and collapsed warning remain visible', async ({ page }, testInfo) => {
@@ -52,8 +61,8 @@ test('Codex compact error and collapsed warning remain visible', async ({ page }
   await expect(page.locator('#cum-bar')).toHaveAttribute('data-state', 'ok');
   await page.evaluate(() => {
     UsageProviders.fetchCodex = async () => { throw new Error('Network unavailable'); };
-    chrome.storage.local.set({ cfg: { pollSeconds: 10 } });
   });
+  await page.getByRole('button', { name: 'Refresh Codex usage' }).click();
   await expect(page.locator('#cum-bar')).toHaveAttribute('data-state', 'error');
   await expect(page.locator('.cum-meta .cum-live')).toBeVisible();
   await expect(page.locator('.cum-meta .cum-live')).toHaveText('!');

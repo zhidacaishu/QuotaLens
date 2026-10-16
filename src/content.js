@@ -79,15 +79,17 @@
     if (provider === "gemini" && UsageProviders.isGeminiUsage(location.href)) return Promise.resolve();
     if (usageInFlight) return afterGeneration ? usageInFlight.then(function () { return loadUsage(false, true); }) : usageInFlight;
     var now = Date.now();
-    if ((now < retryAt && (!force || rateLimited)) || (!force && !afterGeneration && provider === "gemini" && now - lastAttempt < geminiInterval())) return Promise.resolve();
+    if ((now < retryAt && (!force || rateLimited)) || (!force && !afterGeneration && lastAttempt && now - lastAttempt < pollInterval())) return Promise.resolve();
     var requestedScope = scope;
     lastAttempt = now;
     if (!usage) status = "loading";
     render();
     // Initialization errors must enter the same error path as network failures;
     // otherwise a missing adapter leaves the UI stuck on Loading forever.
+    var expired = false, deadlineTimer;
     var request = Promise.resolve().then(function () {
       if (provider !== "gemini") return UsageProviders[provider === "claude" ? "fetchClaude" : "fetchCodex"](function (nextAccount) {
+        if (expired || requestedScope !== scope) return;
         if (account !== nextAccount) { account = nextAccount; usage = null; status = "loading"; render(); }
       });
       if (!globalThis.UsageGemini || typeof globalThis.UsageGemini.fetchUsage !== "function") {
@@ -95,7 +97,14 @@
       }
       return globalThis.UsageGemini.fetchUsage();
     });
-    usageInFlight = request.then(function (data) {
+    // A suspended page or stalled adapter must not hold the refresh lock forever.
+    var deadline = new Promise(function (_, reject) {
+      deadlineTimer = setTimeout(function () {
+        expired = true;
+        reject(new Error("Usage request timed out. Try refreshing again."));
+      }, 45000);
+    });
+    usageInFlight = Promise.race([request, deadline]).then(function (data) {
       if (requestedScope !== scope) return;
       usage = data;
       status = data && (data.five || data.weekly) ? "ok" : "empty";
@@ -111,6 +120,8 @@
       retryAt = Date.now() + (error.retryMs || (provider === "gemini" ? geminiInterval() : 60000));
       render();
     }).then(function () {
+      clearTimeout(deadlineTimer);
+      expired = true;
       usageInFlight = null;
       render();
       if (requestedScope !== scope && document.visibilityState === "visible") loadUsage(false);
@@ -119,6 +130,7 @@
     return usageInFlight;
   }
 
+  function pollInterval() { return provider === "gemini" ? geminiInterval() : Math.max(10, cfg.pollSeconds | 0) * 1000; }
   function geminiInterval() { return Math.max(1, Number(cfg.geminiPollMinutes) || 5) * 60000; }
 
   window.addEventListener("cum-gemini-calibrated", function () {
@@ -209,13 +221,10 @@
     min.innerHTML = svg('<path d="M18 15l-6-6-6 6"/>');
     min.addEventListener("click", function () { setCollapsed(true); });
     meta.appendChild(live); meta.appendChild(updated);
-    var refresh = null;
-    if (provider === "gemini") {
-      refresh = document.createElement("button"); refresh.type = "button"; refresh.className = "cum-refresh";
-      refresh.innerHTML = svg('<path d="M20 7v5h-5M20 12a8 8 0 1 0-2.34 5.66"/>');
-      refresh.addEventListener("click", function () { if (refresh.getAttribute("aria-disabled") !== "true") loadUsage(true); });
-      meta.appendChild(refresh);
-    }
+    var refresh = document.createElement("button"); refresh.type = "button"; refresh.className = "cum-refresh";
+    refresh.innerHTML = svg('<path d="M20 7v5h-5M20 12a8 8 0 1 0-2.34 5.66"/>');
+    refresh.addEventListener("click", function () { if (refresh.getAttribute("aria-disabled") !== "true") loadUsage(true); });
+    meta.appendChild(refresh);
     meta.appendChild(min);
 
     main.appendChild(body); main.appendChild(meta);
@@ -279,7 +288,7 @@
     var editable = layout.findEditable();
     // A detached composer can remain cached across SPA navigation. Remove the
     // old meter when there is no safe target instead of leaving it on screen.
-    if (!document.body || (provider === "claude" && !editable && !isCodePage())) {
+    if (!document.body || (!editable && !(provider === "claude" && isCodePage()))) {
       if (barEl) barEl.remove();
       layout.observeComposer(null, null);
       return;
@@ -310,7 +319,7 @@
     if (warning) barEl.title += ". " + stateLabel;
     if (els.refresh) {
       var cooling = rateLimited && Date.now() < retryAt;
-      var refreshLabel = usageInFlight ? "Refreshing Gemini usage…" : cooling ? "Rate limited — retry in " + Math.ceil((retryAt - Date.now()) / 1000) + "s" : "Refresh Gemini usage";
+      var refreshLabel = usageInFlight ? "Refreshing " + providerLabel + " usage…" : cooling ? "Rate limited — retry in " + Math.ceil((retryAt - Date.now()) / 1000) + "s" : "Refresh " + providerLabel + " usage";
       els.refresh.title = refreshLabel;
       els.refresh.setAttribute("aria-label", refreshLabel);
       els.refresh.setAttribute("aria-disabled", String(!!usageInFlight || cooling));
@@ -408,7 +417,7 @@
   function restartPolling() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     if (document.visibilityState !== "visible") return;
-    var ms = provider === "gemini" ? geminiInterval() : Math.max(10, cfg.pollSeconds | 0) * 1000;
+    var ms = pollInterval();
     loadUsage(false);
     pollTimer = setInterval(function () { loadUsage(false); }, ms);
   }
@@ -416,6 +425,14 @@
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") restartPolling();
     else if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  });
+
+  // Some browser shells resume without a visibility transition. Re-arm polling
+  // on lifecycle events; loadUsage deduplicates and respects retry cooldowns.
+  ["focus", "pageshow", "online"].forEach(function (event) {
+    window.addEventListener(event, function () {
+      if (document.visibilityState === "visible") { restartPolling(); schedule(); }
+    });
   });
 
   /* ----------------------------- init -------------------------------- */

@@ -2,12 +2,21 @@
 (function (root) {
   "use strict";
   function create(provider, schedule) {
+    var codexComposer = '[data-composer-surface-variant], #composer-background, form[data-chatgpt-composer], form[data-type="unified-composer"]';
+    function isNonChatPage() {
+      return provider === "codex" && (/^\/(?:codex\/)?settings(?:\/|$)/i.test(location.pathname) ||
+        /^#settings(?:[\/=?]|$)/i.test(location.hash));
+    }
     // Prefer the message composer over search, settings and source-code editors.
     function findEditable() {
+      if (isNonChatPage()) return null;
       var candidates = document.querySelectorAll('[contenteditable="true"], [contenteditable="plaintext-only"], textarea');
       var best = null, bestScore = -Infinity;
       for (var i = 0; i < candidates.length; i++) {
         var editable = candidates[i];
+        // Settings and GPT editors also contain textareas; geometry and generic
+        // labels alone do not establish a ChatGPT message composer.
+        if (provider === "codex" && !editable.matches('#prompt-textarea') && !editable.closest(codexComposer)) continue;
         if (editable.closest('[role="dialog"], [aria-modal="true"], [role="search"], .monaco-editor, .cm-editor, nav') ||
             editable.disabled || editable.readOnly || !editable.getClientRects().length) continue;
         var style = getComputedStyle(editable);
@@ -48,7 +57,7 @@
     // long drafts clipped by an inner scrolling wrapper.
     function composerBoundary(editable) {
       var selectors = provider === "codex"
-        ? '[data-composer-surface-variant], #composer-background, form[data-chatgpt-composer], form[data-type="unified-composer"]'
+        ? codexComposer
         : provider === "gemini" ? 'input-area-v2, .input-area-container, .input-area-fieldset'
         : '[data-testid="chat-input-container"], [data-testid="composer"]';
       var known = editable.closest(selectors);

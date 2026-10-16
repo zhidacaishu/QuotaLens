@@ -84,6 +84,9 @@ async function setup(t, { route = '/code/session/test', host = 'claude.ai', widt
     if (fetchResponse) return fetchResponse(url, options);
     return { ok: true, status: 200, json: async () => url === '/api/organizations' ? [{ uuid: 'test-org', capabilities: ['chat'] }] : { five_hour: { utilization: 17 }, seven_day: { utilization: 38 } } };
   };
+  if (host === 'chatgpt.com' && html === '<form id="composer"><textarea placeholder="Reply" id="editor"></textarea></form>') {
+    w.document.getElementById('composer').setAttribute('data-chatgpt-composer', '');
+  }
   w.eval(providers);
   w.eval(layout);
   if (missingAdapter) delete w.UsageGemini;
@@ -141,7 +144,7 @@ test('narrow viewport and collapsed chip stay within viewport above composer', a
 
 for (const wrapper of ['main', 'div']) {
 test('ChatGPT ' + wrapper + ' home greeting clears the meter and restores on hide or conversation navigation', async t => {
-  const env = await setup(t, { host: 'chatgpt.com', route: '/', html: '<' + wrapper + '><h1 id="greeting">Welcome</h1><form id="composer"><textarea id="editor"></textarea></form></' + wrapper + '>' });
+  const env = await setup(t, { host: 'chatgpt.com', route: '/', html: '<' + wrapper + '><h1 id="greeting">Welcome</h1><form id="composer" data-chatgpt-composer><textarea id="editor"></textarea></form></' + wrapper + '>' });
   const greeting = env.w.document.getElementById('greeting');
   env.boxes.set('greeting', rect(300, 550, 200, 28));
   env.render();
@@ -559,4 +562,97 @@ test('Gemini inline refresh bypasses idle interval, deduplicates, and respects r
   assert.equal(env.bar().querySelector('.cum-meta .cum-live').textContent, '!');
   button.click(); await env.message('cum-poll');
   assert.equal(calls, 2);
+});
+
+for (const route of ['/settings/personalization', '/codex/settings/usage', '/c/test#settings/Personalization', '/c/test']) {
+  test('ChatGPT ignores custom instructions and generic textareas on ' + route, async t => {
+    const env = await setup(t, { host: 'chatgpt.com', route, html: '<form id="composer"><textarea id="editor" placeholder="Custom instructions for messages"></textarea></form>' });
+    assert.equal(env.bar(), null);
+  });
+}
+
+test('ChatGPT removes the meter on settings navigation and composer unmount, then restores it', async t => {
+  const env = await setup(t, { host: 'chatgpt.com', route: '/c/test' });
+  assert.ok(env.bar());
+  for (const route of ['/settings/personalization', '/c/test#settings/Personalization']) {
+    env.w.history.pushState({}, '', route); env.render();
+    assert.equal(env.bar(), null); // Even if the underlying composer stays mounted.
+    env.w.history.pushState({}, '', '/c/test'); env.render();
+    assert.ok(env.bar());
+  }
+  const composer = env.w.document.getElementById('composer');
+  composer.remove(); env.render();
+  assert.equal(env.bar(), null);
+  env.w.document.body.appendChild(composer); env.render();
+  assert.ok(env.bar());
+});
+
+test('ChatGPT recognizes prompt-textarea without requiring a known wrapper', async t => {
+  const env = await setup(t, { host: 'chatgpt.com', route: '/', html: '<div><div id="prompt-textarea" contenteditable="true"></div></div>' });
+  env.boxes.set('prompt-textarea', rect(100, 600, 700, 100)); env.render();
+  assert.ok(env.bar().classList.contains('cum-composer'));
+});
+
+for (const event of ['focus', 'pageshow', 'online']) {
+  test(event + ' resumes stale Codex polling without duplicate requests or intervals', async t => {
+    const env = await setup(t, { host: 'chatgpt.com', fetchResponse: url => ({ ok: true, json: async () => url === '/api/auth/session' ? { accessToken: 'test' } : { rate_limit: { primary_window: { used_percent: 20 } } } }) });
+    const initial = env.requests.length;
+    env.w.Date.now = () => Date.now() + 2 * 3600000;
+    env.render();
+    assert.equal(env.bar().getAttribute('data-state'), 'stale');
+    env.w.dispatchEvent(new env.w.Event(event));
+    env.w.dispatchEvent(new env.w.Event(event));
+    await flush();
+    assert.equal(env.requests.length, initial + 2);
+    assert.equal(env.bar().getAttribute('data-state'), 'ok');
+    env.w.dispatchEvent(new env.w.Event(event)); await flush();
+    assert.equal(env.requests.length, initial + 2);
+    assert.equal(env.ticks.filter(tick => tick.ms !== 1000 && !tick.cancelled).length, 1);
+  });
+}
+
+test('stalled Codex refresh times out, unlocks retry and ignores late results', async t => {
+  const env = await setup(t, { host: 'chatgpt.com' });
+  let finish, notify;
+  env.w.UsageProviders.fetchCodex = onAccount => {
+    notify = onAccount;
+    return new Promise(resolve => { finish = resolve; });
+  };
+  const refresh = env.bar().querySelector('.cum-refresh');
+  refresh.click(); refresh.click(); await flush();
+  assert.equal(refresh.getAttribute('aria-busy'), 'true');
+  const deadline = env.pending.find(fn => fn.delay === 45000 && !fn.cancelled);
+  assert.ok(deadline); deadline(); await flush();
+  assert.equal(refresh.getAttribute('aria-busy'), 'false');
+  assert.match((await env.message('cum-status')).error, /timed out/);
+  env.w.UsageProviders.fetchCodex = async () => ({ five: { pct: 42 }, at: env.w.Date.now() });
+  refresh.click(); await flush();
+  assert.equal(env.bar().querySelector('.cum-pct').textContent, '42%');
+  notify('late-account'); finish({ five: { pct: 99 }, at: Date.now() }); await flush();
+  assert.equal(env.bar().querySelector('.cum-pct').textContent, '42%');
+  assert.equal((await env.message('cum-status')).status, 'ok');
+});
+
+
+test('Codex retry button and resume events respect the server rate-limit cooldown', async t => {
+  const env = await setup(t, { host: 'chatgpt.com' });
+  let calls = 0;
+  env.w.UsageProviders.fetchCodex = async () => {
+    calls++;
+    const error = new Error('Usage request failed (429)');
+    error.status = 429; error.retryMs = 120000; throw error;
+  };
+  const refresh = env.bar().querySelector('.cum-refresh');
+  refresh.click(); await flush();
+  assert.equal(refresh.getAttribute('aria-disabled'), 'true');
+  refresh.click();
+  env.w.dispatchEvent(new env.w.Event('online'));
+  await env.message('cum-poll'); await flush();
+  assert.equal(calls, 1);
+  env.w.Date.now = () => Date.now() + 121000;
+  env.render();
+  assert.equal(refresh.getAttribute('aria-disabled'), 'false');
+  env.w.UsageProviders.fetchCodex = async () => ({ five: { pct: 30 }, at: env.w.Date.now() });
+  refresh.click(); await flush();
+  assert.equal(env.bar().getAttribute('data-state'), 'ok');
 });

@@ -95,3 +95,31 @@ test('ChatGPT home greeting outside main stays clear through collapse and naviga
   await page.evaluate(() => { history.pushState({}, '', '/c/test'); window.dispatchEvent(new Event('resize')); });
   await expect.poll(() => page.locator('#greeting').evaluate(el => el.style.translate)).toBe('');
 });
+
+test('ChatGPT settings fields never become quota anchors and returning to chat restores placement', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('http://127.0.0.1:4173/provider?theme=dark&provider=codex');
+  const bar = page.locator('#cum-bar');
+  await expect(bar).toBeVisible();
+  await page.evaluate(() => {
+    window.savedComposer = document.querySelector('#composer');
+    savedComposer.remove();
+    const settings = document.createElement('section');
+    settings.id = 'settings';
+    settings.style.cssText = 'margin:80px auto;width:700px';
+    settings.innerHTML = '<h1>ChatGPT 自定义指令</h1><textarea aria-label="Custom instructions" style="width:100%;height:220px">偏好段落式回答</textarea><label>昵称<input style="display:block;width:100%;margin:30px 0"></label><textarea style="width:100%;height:50px" placeholder="Message preferences"></textarea>';
+    document.body.appendChild(settings);
+  });
+  await expect(bar).toHaveCount(0); // Full-page settings without a dialog or route change.
+  await page.locator('textarea').first().focus();
+  await page.screenshot({ path: testInfo.outputPath('settings-no-meter.png') });
+  await page.evaluate(() => {
+    document.querySelector('#settings').remove();
+    document.body.appendChild(savedComposer);
+    history.pushState({}, '', '/c/test#settings/Personalization');
+  });
+  await expect(bar).toHaveCount(0); // Settings hash with the chat still mounted underneath.
+  await page.evaluate(() => { history.pushState({}, '', '/c/test'); });
+  await expect(bar).toBeVisible();
+  await expect.poll(() => page.evaluate(() => savedComposer.getBoundingClientRect().top - document.querySelector('#cum-bar').getBoundingClientRect().bottom)).toBeCloseTo(6, 0);
+});
