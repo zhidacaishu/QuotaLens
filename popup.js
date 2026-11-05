@@ -23,6 +23,10 @@
       if (!provider) { $("#status").textContent = "Open Claude, ChatGPT or Gemini."; return; }
       $("#provider").textContent = UsageProviders.labels[provider] + (provider === "codex" ? " quota · shown in ChatGPT" : " quota");
       $("#gemini-note").hidden = provider !== "gemini";
+      if (UsageProviders.isGeminiUsage(tab.url)) {
+        $("#status").textContent = "Return to a Gemini conversation to refresh its meter.";
+        return;
+      }
       chrome.tabs.sendMessage(tab.id, { type: "cum-status" }, function (resp) {
         if (chrome.runtime.lastError || !resp) { $("#status").textContent = "Reload this page to connect the extension."; return; }
         getCfg().then(function (cfg) { updateVisibilityStatus(cfg, provider); });
@@ -49,8 +53,10 @@
   }
   function save() {
     getCfg().then(function (cfg) {
-      cfg.pollSeconds = Math.max(10, Number($("#poll").value) || 15);
-      cfg.geminiPollMinutes = Math.max(1, Number($("#gemini-poll").value) || 5);
+      cfg.pollSeconds = Math.min(86400, Math.max(10, Number($("#poll").value) || 15));
+      cfg.geminiPollMinutes = Math.min(1440, Math.max(1, Number($("#gemini-poll").value) || 5));
+      $("#poll").value = cfg.pollSeconds;
+      $("#gemini-poll").value = cfg.geminiPollMinutes;
       cfg.transparency = Number($("#transparency").value);
       cfg.debug = $("#debug").checked;
       delete cfg.hidden;

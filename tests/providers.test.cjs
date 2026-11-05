@@ -118,3 +118,27 @@ test('Claude requests abort on the configured timeout and decode Retry-After dat
     await assert.rejects(local.UsageProviders.fetchClaude(), error => error.status === 429 && error.retryMs > 178000);
   } finally { clearTimeout(keepAlive); }
 });
+
+test('Codex official usage link follows the current settings route', () => {
+  assert.equal(p.usageUrl('https://chatgpt.com/'), 'https://chatgpt.com/settings/usage');
+});
+
+test('Gemini calibration ignores CSS-hidden ancestors and hidden percentage text', t => {
+  const usage = read(t, '<main><section style="display:none"><h2>Current usage</h2><p>95% used</p></section><section><h2>Current usage</h2><p>10% used</p><p style="display:none">95% used</p></section><section><h2>Weekly limit</h2><p>30% used</p></section></main>');
+  assert.equal(usage.five.pct, 10);
+  assert.equal(usage.weekly.pct, 30);
+});
+
+test('Codex duplicate window durations stay unknown instead of overwriting a quota', () => {
+  const usage = p.parseCodex({ rate_limit: {
+    primary_window: { used_percent: 10, limit_window_seconds: 18000 },
+    secondary_window: { used_percent: 80, limit_window_seconds: 18000 }
+  } });
+  assert.equal(usage.five, null);
+  assert.equal(usage.weekly, null);
+});
+
+test('Codex invalid reset epochs never render an invalid date', () => {
+  const usage = p.parseCodex({ rate_limit: { primary_window: { used_percent: 10, reset_at: Number.MAX_VALUE } } });
+  assert.equal(usage.five.resetMs, null);
+});

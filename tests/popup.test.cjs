@@ -45,7 +45,7 @@ test('popup refreshes supported pages, reports failures and opens account-scoped
 test('popup usage screen refresh gives instructions without issuing a recursive refresh', async t => {
   const env = await setup(t, 'https://gemini.google.com/u/2/usage');
   env.$('#refresh').click(); await flush();
-  assert.deepEqual(env.sent, ['cum-status']);
+  assert.deepEqual(env.sent, []);
   assert.match(env.$('#status').textContent, /Return to a Gemini conversation/);
 });
 
@@ -93,4 +93,9 @@ test('transparency updates on input, persists zero, and restores without changin
   env.w.eval(read('popup.js')); await flush();
   assert.equal(env.$('#transparency').value, '0');
   assert.equal(env.$('#transparency-value').textContent, '0%');
+});
+
+test('Gemini usage page popup explains calibration immediately instead of loading forever', async t => {
+  const env = await setup(t, 'https://gemini.google.com/u/2/usage', { status: 'loading', hasData: false });
+  assert.match(env.$('#status').textContent, /Return to a Gemini conversation/);
 });

@@ -35,15 +35,17 @@ npm run test:browser
 
 - **单元与集成测试**：覆盖三站额度数据解析、认证与 429 限流响应、请求超时恢复、Claude 组织变更与历史缓存清理、Gemini 跨环境消息桥接与动态校准、轮询定时器销毁、ResizeObserver 生命周期、弹窗交互与设置刷新等。
 - **Chromium 页面合成测试**：在模拟三站结构的合成页面中，验证真实 CSS 布局渲染、附件栏展开、长文输入滚动、360px 窄视口自适应、折叠与展开动画、防遮挡隐藏机制，以及草稿内容与输入焦点的完整保留。网络请求均由本地测试固件拦截并模拟响应，无需真实账号或订阅，亦不会向官方平台发送消息。
+- **实际扩展加载测试**：新增独立 Chromium 持久上下文，直接加载项目清单与内容脚本，验证 Codex/Gemini 的 MAIN/ISOLATED 隔离、真实 Chrome storage 校准、账号路径、手动刷新、折叠恢复与 390px 窄屏。所有 HTTP 请求由测试拦截，不使用真实账号。
 - **扩展清单规范检查**：验证各脚本路径有效性、确保不同执行环境之间绝不复用同一脚本 URL，并确认已提交的 Gemini bundle 与源代码保持完全同步。
 
 ## 验证边界与局限说明
 
 - JSDOM 缺乏内置布局引擎，其坐标相关测试仅用于验证数值定位逻辑；
-- Chromium 合成页面测试进一步补充了真实 CSS 渲染及观察器行为，但由于未在浏览器中以正式安装扩展的形式加载，无法验证 Chrome 实际权限体系与 MAIN/ISOLATED 执行环境隔离，亦无法保证第三方平台最新的线上 DOM 结构或内部 API 保持向前兼容；
+- 原有 Chromium 合成页面测试验证 CSS 布局和观察器；新增实际扩展加载测试补充 Chrome 执行环境隔离与存储。它们使用本地模拟响应，仍不能保证第三方平台后续 DOM 与内部 API 的兼容性；
 - 当前开发环境暂无可用 Claude 订阅账号，未在真实订阅页面下进行线上验证；
+- 2026-11-05 已在用户登录的 ChatGPT / Gemini 上核对读数与官方页面、观察布局并操作刷新；Claude 按要求未访问。此次源码修复尚未在用户现有 Chrome 中重载，详细发现与验证边界见[审查报告](review-2026-11-05.md)。
 - ChatGPT 与 Gemini 此前的人工核验结果已归档至[历史验证记录](validation-history.md)，不代表当前修订版本完成了新一轮线上实测；0.1.3 曾完成真实 ChatGPT 页面 0%/90% 往返验证。0.1.4 已在真实 Chrome / ChatGPT 复核宽屏、紧凑、双行布局，并在已安装扩展设置页核验 0%/95% 边界、1% 步长与刷新后保存，记录见 UI 设计说明。测试用例总数请以终端实际输出为准。
 
 ## English
 
-Run the commands above for unit/integration checks and local Chromium smoke tests. Browser fixtures intercept network requests and require no account or subscription. They exercise real CSS layout and observer behavior, but do not install the extension or validate Chrome permissions, execution-world isolation, current provider DOM, or live internal APIs. No Claude subscription was available for this revision; live Claude behavior remains unverified. Earlier manual checks are historical records only.
+Run the commands above for unit/integration checks and local Chromium smoke tests. Browser fixtures intercept network requests and require no account or subscription. The original fixtures exercise CSS layout and observers; the installed-extension tests additionally load the actual manifest in an isolated Chromium profile to verify execution-world isolation and storage. Mocked requests do not establish compatibility with future provider DOM or live API changes. See the November 5 review for the separate live-browser checks and their limits. No Claude subscription was available for this revision; live Claude behavior remains unverified. Earlier manual checks are historical records only.

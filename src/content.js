@@ -9,7 +9,7 @@
   if (!provider) return;
   var providerLabel = UsageProviders.labels[provider];
   var layout = UsageLayout.create(provider, schedule);
-  var scope = providerScope(), account = null, lastAttempt = 0, retryAt = 0, rateLimited = false, errorText = "";
+  var scope = providerScope(), scopeVersion = 0, account = null, lastAttempt = 0, retryAt = 0, rateLimited = false, errorText = "";
 
   function providerScope() {
     if (provider !== "gemini") return provider;
@@ -80,7 +80,8 @@
     if (usageInFlight) return afterGeneration ? usageInFlight.then(function () { return loadUsage(false, true); }) : usageInFlight;
     var now = Date.now();
     if ((now < retryAt && (!force || rateLimited)) || (!force && !afterGeneration && lastAttempt && now - lastAttempt < pollInterval())) return Promise.resolve();
-    var requestedScope = scope;
+    // A -> B -> A must invalidate requests from before the first account switch.
+    var requestedScope = scope, requestedVersion = scopeVersion;
     lastAttempt = now;
     if (!usage) status = "loading";
     render();
@@ -89,7 +90,7 @@
     var expired = false, deadlineTimer;
     var request = Promise.resolve().then(function () {
       if (provider !== "gemini") return UsageProviders[provider === "claude" ? "fetchClaude" : "fetchCodex"](function (nextAccount) {
-        if (expired || requestedScope !== scope) return;
+        if (expired || requestedVersion !== scopeVersion || requestedScope !== providerScope()) return;
         if (account !== nextAccount) { account = nextAccount; usage = null; status = "loading"; render(); }
       });
       if (!globalThis.UsageGemini || typeof globalThis.UsageGemini.fetchUsage !== "function") {
@@ -105,13 +106,13 @@
       }, 45000);
     });
     usageInFlight = Promise.race([request, deadline]).then(function (data) {
-      if (requestedScope !== scope) return;
+      if (requestedVersion !== scopeVersion || requestedScope !== providerScope()) return;
       usage = data;
       status = data && (data.five || data.weekly) ? "ok" : "empty";
       errorText = ""; retryAt = 0; rateLimited = false;
       render();
     }).catch(function (error) {
-      if (requestedScope !== scope) return;
+      if (requestedVersion !== scopeVersion || requestedScope !== providerScope()) return;
       status = "error";
       log("Usage refresh failed", provider, error.status || 0);
       errorText = error.message || "Unable to read usage";
@@ -124,14 +125,15 @@
       expired = true;
       usageInFlight = null;
       render();
-      if (requestedScope !== scope && document.visibilityState === "visible") loadUsage(false);
+      if (requestedVersion !== scopeVersion && document.visibilityState === "visible") loadUsage(false);
     });
     render();
     return usageInFlight;
   }
 
-  function pollInterval() { return provider === "gemini" ? geminiInterval() : Math.max(10, cfg.pollSeconds | 0) * 1000; }
-  function geminiInterval() { return Math.max(1, Number(cfg.geminiPollMinutes) || 5) * 60000; }
+  // Keep user settings below the signed 32-bit browser timer limit.
+  function pollInterval() { return provider === "gemini" ? geminiInterval() : Math.min(86400, Math.max(10, Number(cfg.pollSeconds) || DEFAULTS.pollSeconds)) * 1000; }
+  function geminiInterval() { return Math.min(1440, Math.max(1, Number(cfg.geminiPollMinutes) || DEFAULTS.geminiPollMinutes)) * 60000; }
 
   window.addEventListener("cum-gemini-calibrated", function () {
     if (provider !== "gemini") return;
@@ -274,7 +276,7 @@
     layout.restoreGreeting();
     var nextScope = providerScope();
     if (nextScope !== scope) {
-      scope = nextScope; usage = null; status = "loading"; errorText = ""; lastAttempt = 0; retryAt = 0; rateLimited = false;
+      scope = nextScope; scopeVersion++; usage = null; status = "loading"; errorText = ""; lastAttempt = 0; retryAt = 0; rateLimited = false;
       setTimeout(function () { if (document.visibilityState === "visible") loadUsage(false); }, 0);
     }
     if (provider === "gemini" && UsageProviders.isGeminiUsage(location.href)) {

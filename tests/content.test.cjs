@@ -656,3 +656,28 @@ test('Codex retry button and resume events respect the server rate-limit cooldow
   refresh.click(); await flush();
   assert.equal(env.bar().getAttribute('data-state'), 'ok');
 });
+
+test('Gemini account round trip invalidates an older request even when the URL returns to the original account', async t => {
+  const callbacks = [];
+  const env = await setup(t, { host: 'gemini.google.com', route: '/u/0/app', geminiResponse: (_, cb) => callbacks.push(cb) });
+  env.w.history.pushState({}, '', '/u/1/app'); env.render();
+  env.w.history.pushState({}, '', '/u/0/app'); env.render();
+  callbacks[0]({ ok: true, usage: { five: { pct: 99 }, at: Date.now() } });
+  await flush();
+  assert.doesNotMatch(env.bar().textContent, /99%/);
+  assert.equal(callbacks.length, 2);
+  callbacks[1]({ ok: true, usage: { five: { pct: 12 }, at: Date.now() } });
+  await flush();
+  assert.match(env.bar().textContent, /12%/);
+});
+
+test('polling intervals remain finite and within browser timer limits for malformed or huge settings', async t => {
+  for (const host of ['chatgpt.com', 'gemini.google.com']) {
+    const env = await setup(t, { host, route: '/app', cfg: { pollSeconds: Infinity, geminiPollMinutes: Infinity } });
+    for (const value of [Infinity, 1e12, -5, 'invalid']) {
+      env.setCfg({ pollSeconds: value, geminiPollMinutes: value });
+      const timer = env.ticks.filter(tick => tick.ms !== 1000 && !tick.cancelled).at(-1);
+      assert.ok(Number.isFinite(timer.ms) && timer.ms >= 10000 && timer.ms <= 86400000, String(timer.ms));
+    }
+  }
+});

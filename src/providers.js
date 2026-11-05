@@ -30,7 +30,7 @@
   function usageUrl(value) {
     var provider = identify(value);
     if (provider === "gemini") return "https://gemini.google.com/u/" + geminiAccount(value) + "/usage";
-    if (provider === "codex") return "https://chatgpt.com/codex/settings/usage";
+    if (provider === "codex") return "https://chatgpt.com/settings/usage";
     return "https://claude.ai/settings/usage";
   }
 
@@ -43,6 +43,7 @@
     var out = { five: null, weekly: null, at: now };
     var rate = data && data.rate_limit;
     if (!rate) return out;
+    var seen = new Set();
     ["primary_window", "secondary_window"].forEach(function (slot) {
       var window = rate[slot];
       if (!window || percent(window.used_percent) === null) return;
@@ -52,9 +53,12 @@
       var key = seconds === 18000 ? "five" : seconds === 604800 ? "weekly"
         : seconds == null ? (slot === "primary_window" ? "five" : "weekly") : null;
       if (!key) return;
+      if (seen.has(key)) { out[key] = null; return; }
+      seen.add(key);
       var reset = null;
       if (typeof window.reset_at === "number" && Number.isFinite(window.reset_at) && window.reset_at > 0) reset = window.reset_at * 1000;
       else if (typeof window.reset_after_seconds === "number" && Number.isFinite(window.reset_after_seconds) && window.reset_after_seconds >= 0) reset = now + window.reset_after_seconds * 1000;
+      if (!Number.isFinite(reset) || !Number.isFinite(new Date(reset).getTime())) reset = null;
       out[key] = { pct: window.used_percent, resetMs: reset };
     });
     return out;
@@ -143,11 +147,30 @@
   function parseGeminiDocument(doc, now) {
     var out = { five: null, weekly: null, at: now || Date.now() };
     var anchors = [];
-    Array.from(doc.querySelectorAll("h1,h2,h3,h4,div,span,p,label")).forEach(function (el) {
-      if (el.closest('#cum-bar, script, style, [hidden], [aria-hidden="true"]')) return;
+    var visibility = new WeakMap(), texts = new WeakMap();
+    function visible(el) {
+      if (!el || el.nodeType !== 1) return true;
+      if (visibility.has(el)) return visibility.get(el);
       var style = doc.defaultView && doc.defaultView.getComputedStyle(el);
-      if (style && (style.display === "none" || style.visibility === "hidden")) return;
-      var text = el.textContent.trim();
+      var shown = !el.matches('#cum-bar, script, style, [hidden], [aria-hidden="true"]') &&
+        (!style || (style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse")) && visible(el.parentElement);
+      visibility.set(el, shown);
+      return shown;
+    }
+    function visibleText(el) {
+      if (!visible(el)) return "";
+      if (texts.has(el)) return texts.get(el);
+      var text = Array.from(el.childNodes).map(function (node) {
+        return node.nodeType === 3 ? node.textContent : node.nodeType === 1 ? visibleText(node) : "";
+      }).join("");
+      var style = doc.defaultView && doc.defaultView.getComputedStyle(el);
+      if (el.tagName === "BR" || (style && /block|flex|grid|table|list-item/.test(style.display))) text = "\n" + text + "\n";
+      texts.set(el, text);
+      return text;
+    }
+    Array.from(doc.querySelectorAll("h1,h2,h3,h4,div,span,p,label")).forEach(function (el) {
+      if (!visible(el)) return;
+      var text = visibleText(el).trim();
       var key = FIVE.test(text) ? "five" : WEEK.test(text) ? "weekly" : null;
       if (key) anchors.push({ el: el, key: key });
     });
@@ -157,7 +180,7 @@
       for (var depth = 0; container && container !== doc.body && depth < 7; depth++, container = container.parentElement) {
         // Never take a percentage from the other window's section.
         if (anchors.some(function (a) { return a.key !== anchor.key && container.contains(a.el); })) break;
-        var text = container.innerText || container.textContent || "";
+        var text = visibleText(container);
         var pct = textPercent(text);
         if (pct === null) continue;
         var reset = text.match(/(?:resets?(?:\s+(?:at|in|on))?|重置时间|重設時間|重设时间|重置時間|重置|重設)\s*[:：]?\s*([^\n]{1,100})/i);

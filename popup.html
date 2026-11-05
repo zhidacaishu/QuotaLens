@@ -48,8 +48,8 @@
       <section class="settings" aria-labelledby="refresh-heading">
         <h2 id="refresh-heading" class="section-title">Refresh intervals</h2>
         <div class="glass settings-card">
-          <label class="setting-row" for="poll"><span>Claude / Codex<span class="detail">While the page is visible</span></span><span class="number-control"><input id="poll" type="number" min="10" step="5" aria-label="Claude / Codex refresh interval in seconds" /><span>sec</span></span></label>
-          <label class="setting-row" for="gemini-poll"><span>Gemini<span class="detail">Also refreshes after replies</span></span><span class="number-control"><input id="gemini-poll" type="number" min="1" step="1" aria-label="Gemini refresh interval in minutes" /><span>min</span></span></label>
+          <label class="setting-row" for="poll"><span>Claude / Codex<span class="detail">While the page is visible</span></span><span class="number-control"><input id="poll" type="number" max="86400" min="10" step="5" aria-label="Claude / Codex refresh interval in seconds" /><span>sec</span></span></label>
+          <label class="setting-row" for="gemini-poll"><span>Gemini<span class="detail">Also refreshes after replies</span></span><span class="number-control"><input id="gemini-poll" type="number" max="1440" min="1" step="1" aria-label="Gemini refresh interval in minutes" /><span>min</span></span></label>
         </div>
       </section>
       <div class="glass settings-card">
