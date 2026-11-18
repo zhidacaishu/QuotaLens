@@ -38,9 +38,10 @@ function setup(t, { route = '/u/2/app', html = '', fetchImpl, main = true, isola
     requests.push({ url, init });
     return fetchImpl ? fetchImpl(url, init) : Promise.resolve(new Response(envelope()));
   };
+  let storageChanged;
   w.chrome = { storage: {
     local: { get: (_, cb) => cb(stored), set: data => Object.assign(stored, data) },
-    onChanged: { addListener() {} }
+    onChanged: { addListener(fn) { storageChanged = fn; } }
   }, tabs: { create() { throw new Error('Must never open tabs'); } } };
   w.eval(read('providers.js')); w.eval(read('gemini-rpc.js'));
   if (main) w.eval(read('gemini-main.js'));
@@ -48,7 +49,7 @@ function setup(t, { route = '/u/2/app', html = '', fetchImpl, main = true, isola
   const runTimers = ms => {
     for (const [id, timer] of Array.from(timers)) if (timer.ms === ms) { timers.delete(id); timer.fn(); }
   };
-  return { w, requests, posted, stored, timers, event, runTimers };
+  return { w, requests, posted, stored, timers, event, runTimers, storageChanged };
 }
 
 test('Gemini RPC parser handles framing, exact periods, fractions and unrelated buckets', t => {
@@ -225,4 +226,19 @@ test('Gemini MAIN retains early calibration captures until the isolated bridge i
   env.w.eval(read('gemini-usage.js'));
   await flush(); env.runTimers(200);
   assert.equal(env.stored['geminiRpc:2'], 'Rotated3');
+});
+
+test('Gemini uses calibration changes and removals received while viewing another account', async t => {
+  const env = setup(t, { fetchImpl: url => Promise.resolve(new Response(envelope(new URL(url).searchParams.get('rpcids')))) });
+  const idUsed = async () => {
+    await env.w.UsageGemini.fetchUsage();
+    return new URL(env.requests.at(-1).url).searchParams.get('rpcids');
+  };
+  assert.equal(await idUsed(), 'jSf9Qc');
+  for (const [change, expected] of [[{ newValue: 'Rotated1' }, 'Rotated1'], [{ oldValue: 'Rotated1' }, 'jSf9Qc']]) {
+    env.w.history.pushState({}, '', '/u/3/app');
+    env.storageChanged({ 'geminiRpc:2': change }, 'local');
+    env.w.history.pushState({}, '', '/u/2/app');
+    assert.equal(await idUsed(), expected);
+  }
 });

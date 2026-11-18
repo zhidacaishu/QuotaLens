@@ -44,8 +44,8 @@ npm run test:browser
 - 原有 Chromium 合成页面测试验证 CSS 布局和观察器；新增实际扩展加载测试补充 Chrome 执行环境隔离与存储。它们使用本地模拟响应，仍不能保证第三方平台后续 DOM 与内部 API 的兼容性；
 - 当前开发环境暂无可用 Claude 订阅账号，未在真实订阅页面下进行线上验证；
 - 2026-11-05 已在用户登录的 ChatGPT / Gemini 上核对读数与官方页面、观察布局并操作刷新；Claude 按要求未访问。此次源码修复尚未在用户现有 Chrome 中重载，详细发现与验证边界见[审查报告](review-2026-11-05.md)。
-- ChatGPT 与 Gemini 此前的人工核验结果已归档至[历史验证记录](validation-history.md)，不代表当前修订版本完成了新一轮线上实测；0.1.3 曾完成真实 ChatGPT 页面 0%/90% 往返验证。0.1.4 已在真实 Chrome / ChatGPT 复核宽屏、紧凑、双行布局，并在已安装扩展设置页核验 0%/95% 边界、1% 步长与刷新后保存，记录见 UI 设计说明。测试用例总数请以终端实际输出为准。
+- 2026-11-19 发布 0.1.6 前，在登录的 Chrome 中对照官方页面核实了 ChatGPT 和 Gemini 的用量。重新加载扩展后，验证了 Codex 工作模式的环境工具栏，以及 390px 视口下 Gemini 的 Chat / Task 切换、额度栏折叠和展开。限流、超时及账号切换使用模拟响应验证。本轮跳过了 Claude 页面。
 
 ## English
 
-Run the commands above for unit/integration checks and local Chromium smoke tests. Browser fixtures intercept network requests and require no account or subscription. The original fixtures exercise CSS layout and observers; the installed-extension tests additionally load the actual manifest in an isolated Chromium profile to verify execution-world isolation and storage. Mocked requests do not establish compatibility with future provider DOM or live API changes. See the November 5 review for the separate live-browser checks and their limits. No Claude subscription was available for this revision; live Claude behavior remains unverified. Earlier manual checks are historical records only.
+Run the commands above for unit/integration checks and local Chromium smoke tests. Browser fixtures intercept network requests and require no account or subscription. The original fixtures exercise CSS layout and observers; the installed-extension tests additionally load the actual manifest in an isolated Chromium profile to verify execution-world isolation and storage. Mocked requests do not establish compatibility with future provider DOM or live API changes. On November 19, signed-in Chrome checks verified ChatGPT and Gemini quota readings, the Codex work toolbar and the Gemini Chat / Task switch at a 390px viewport. Live Claude pages were outside the scope of the 0.1.6 checks.

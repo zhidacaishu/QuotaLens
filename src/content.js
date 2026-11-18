@@ -33,6 +33,7 @@
   var usage = null;          // { five:{pct,resetMs}|null, weekly:{...}|null, at }
   var status = "loading";    // loading | ok | empty | error
   var usageInFlight = null;
+  var calibrationPending = false;
   var pollTimer = null, uiTimer = null;
 
   function shallow(o) { var r = {}; for (var k in o) r[k] = o[k]; return r; }
@@ -71,7 +72,12 @@
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (!msg || !msg.type) return;
     if (msg.type === "cum-poll") { loadUsage(true).then(function () { sendResponse({ ok: status === "ok", status: status }); }); return true; }
-    if (msg.type === "cum-status") { sendResponse({ provider: providerLabel, hasData: !!(usage && (usage.five || usage.weekly)), at: usage && usage.at, status: status, error: errorText, cfg: cfg }); return true; }
+    if (msg.type === "cum-status") {
+      if (providerScope() !== scope) render();
+      sendResponse({ provider: providerLabel, hasData: !!usage, at: usage && usage.at, status: status, error: errorText,
+        busy: !!usageInFlight, retryAt: rateLimited ? retryAt : 0, cfg: cfg });
+      return true;
+    }
   });
 
   /* --------------------------- API calls ----------------------------- */
@@ -107,8 +113,8 @@
     });
     usageInFlight = Promise.race([request, deadline]).then(function (data) {
       if (requestedVersion !== scopeVersion || requestedScope !== providerScope()) return;
-      usage = data;
-      status = data && (data.five || data.weekly) ? "ok" : "empty";
+      usage = data && (data.five || data.weekly) ? data : null;
+      status = usage ? "ok" : "empty";
       errorText = ""; retryAt = 0; rateLimited = false;
       render();
     }).catch(function (error) {
@@ -124,6 +130,7 @@
       clearTimeout(deadlineTimer);
       expired = true;
       usageInFlight = null;
+      if (calibrationPending) { calibrationPending = false; refreshAfterCalibration(); }
       render();
       if (requestedVersion !== scopeVersion && document.visibilityState === "visible") loadUsage(false);
     });
@@ -132,14 +139,18 @@
   }
 
   // Keep user settings below the signed 32-bit browser timer limit.
-  function pollInterval() { return provider === "gemini" ? geminiInterval() : Math.min(86400, Math.max(10, Number(cfg.pollSeconds) || DEFAULTS.pollSeconds)) * 1000; }
-  function geminiInterval() { return Math.min(1440, Math.max(1, Number(cfg.geminiPollMinutes) || DEFAULTS.geminiPollMinutes)) * 60000; }
+  function pollInterval() { return provider === "gemini" ? geminiInterval() : UsageProviders.pollSetting(provider, cfg.pollSeconds) * 1000; }
+  function geminiInterval() { return UsageProviders.pollSetting("gemini", cfg.geminiPollMinutes) * 60000; }
 
+  function refreshAfterCalibration() {
+    if (rateLimited && Date.now() < retryAt) return;
+    lastAttempt = 0; retryAt = 0;
+    if (document.visibilityState === "visible") loadUsage(false);
+  }
   window.addEventListener("cum-gemini-calibrated", function () {
     if (provider !== "gemini") return;
-    lastAttempt = 0;
-    if (!rateLimited) retryAt = 0;
-    if (document.visibilityState === "visible") loadUsage(false);
+    if (usageInFlight) calibrationPending = true;
+    else refreshAfterCalibration();
   });
 
   /* ---------------------------- rendering ---------------------------- */

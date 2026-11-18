@@ -123,3 +123,69 @@ test('ChatGPT settings fields never become quota anchors and returning to chat r
   await expect(bar).toBeVisible();
   await expect.poll(() => page.evaluate(() => savedComposer.getBoundingClientRect().top - document.querySelector('#cum-bar').getBoundingClientRect().bottom)).toBeCloseTo(6, 0);
 });
+
+test('Codex work composer keeps its upper toolbar clickable in both meter states', async ({ page }, testInfo) => {
+  await page.goto('http://127.0.0.1:4173/provider?provider=codex&theme=dark');
+  await page.locator('#composer').evaluate(composer => {
+    const root = document.createElement('div');
+    root.setAttribute('data-codex-composer-root', '');
+    root.style.cssText = 'position:fixed;bottom:24px;left:24px;width:calc(100% - 48px)';
+    composer.before(root);
+    const toolbar = document.createElement('button');
+    toolbar.textContent = 'Default environment';
+    toolbar.style.cssText = 'display:block;height:40px;margin:auto';
+    toolbar.onclick = () => { toolbar.textContent = 'Selected environment'; };
+    root.append(toolbar, composer);
+    Object.assign(composer.style, { position: 'static', width: '100%' });
+  });
+  const bar = page.locator('#cum-bar');
+  const toolbar = page.getByRole('button', { name: /environment/ });
+  for (const width of [1000, 390]) {
+    await page.setViewportSize({ width, height: 540 });
+    for (const action of ['Minimize usage', 'Show Codex usage']) {
+      await expect.poll(async () => {
+        const box = await bar.boundingBox();
+        return (await toolbar.boundingBox()).y - box.y - box.height;
+      }).toBeCloseTo(6, 0);
+      await page.getByRole('button', { name: action, exact: true }).click();
+    }
+    await toolbar.click();
+    await expect(toolbar).toHaveText('Selected environment');
+  }
+  await page.screenshot({ path: testInfo.outputPath('codex-work-toolbar.png') });
+});
+
+test('Gemini meter follows the Chat / Task switch when it moves above the input on mobile', async ({ page }) => {
+  await page.goto('http://127.0.0.1:4173/provider?provider=gemini');
+  await page.locator('#composer').evaluate(composer => {
+    const outer = document.createElement('div');
+    outer.className = 'input-area-container';
+    outer.style.cssText = 'position:fixed;bottom:0;left:0;width:100%;display:flex;align-items:center;flex-direction:column';
+    composer.classList.remove('input-area-container');
+    composer.before(outer);
+    const toggle = document.createElement('chat-spark-toggle');
+    toggle.innerHTML = '<button type="button">Chat</button><button type="button">Task</button>';
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = 'input-area-fieldset';
+    fieldset.style.cssText = 'width:calc(100% - 64px);padding:0;margin:0;border:none';
+    outer.append(fieldset, toggle);
+    fieldset.appendChild(composer);
+    Object.assign(composer.style, { position: 'static', width: '100%' });
+    const style = document.createElement('style');
+    style.textContent = '@media (max-width:520px) { chat-spark-toggle { order:-1; margin-bottom:12px } }';
+    document.head.appendChild(style);
+  });
+  for (const width of [900, 390, 900]) {
+    await page.setViewportSize({ width, height: 600 });
+    for (const action of ['Minimize usage', 'Show Gemini usage']) {
+      await expect.poll(() => page.locator('#cum-bar').evaluate(el => {
+        const card = document.querySelector('.input-area-fieldset').getBoundingClientRect();
+        const toggle = document.querySelector('chat-spark-toggle').getBoundingClientRect();
+        return Math.min(card.top, toggle.top) - el.getBoundingClientRect().bottom;
+      })).toBeCloseTo(6, 0);
+      await page.getByRole('button', { name: 'Task', exact: true }).click({ trial: true });
+      await page.getByRole('button', { name: action, exact: true }).click();
+    }
+    expect((await page.locator('#cum-bar').boundingBox()).width).toBe(width - 64);
+  }
+});

@@ -40,7 +40,8 @@ for (const provider of ['codex', 'gemini']) {
         }
         if (url.pathname === '/u/1/usage') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><body>
           <section style="display:none"><h2>Current usage</h2><p>99% used</p></section>
-          <section><h2>Current usage</h2><p>12% used</p></section><section><h2>Weekly limit</h2><p>34% used</p></section>
+          <ul><li><div><strong>Current usage</strong><button>info</button></div><p>12% used</p></li>
+          <li><span><strong>Weekly limit</strong><small>Resets tomorrow</small></span><p>34% used</p></li></ul>
           <script>fetch('/u/1/_/BardChatUi/data/batchexecute?rpcids=Rotated1&source-path=/u/1/usage', {method:'POST', body:new URLSearchParams({'f.req':JSON.stringify([[['Rotated1','[]',null,'generic']]]),at:'fixture-at'})});</script>
           </body></html>` });
         if (req.isNavigationRequest()) return route.fulfill({ contentType: 'text/html', body: fixture });

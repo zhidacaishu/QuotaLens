@@ -86,7 +86,7 @@ Runtime code is plain JavaScript. `jsdom` supports tests and `sharp` exports SVG
 
 After editing Gemini MAIN or RPC helpers, run `npm run build` and include the generated `src/gemini-main.bundle.js`. After editing the icon, run `npm run build:icons` to export the 16 / 32 / 48 / 128px PNGs.
 
-Unit tests use mocked sessions and geometry; separate Chromium tests exercise synthetic pages without signing in. See [Testing](docs/testing.md) for commands and limitations. No Claude subscription was available for this revision, so the live subscription page remains unverified. Earlier ChatGPT / Gemini checks are preserved as [historical records](docs/validation-history.md), not current live verification.
+Unit tests use mocked sessions and geometry; separate Chromium tests exercise synthetic pages without signing in. See [Testing](docs/testing.md) for commands and limitations. For 0.1.6, signed-in Chrome checks compared ChatGPT and Gemini readings with their official usage pages and verified the Codex work toolbar and Gemini’s narrow-screen mode switch. Live Claude pages were outside the scope of this review.
 
 ## Acknowledgments
 

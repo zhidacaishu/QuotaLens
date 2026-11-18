@@ -15,23 +15,44 @@
     });
   }
   function supported(tab) { return tab && UsageProviders.identify(tab.url); }
+  var statusTimer, statusVersion = 0, refreshing = false;
   function refreshStatus() {
+    clearTimeout(statusTimer);
+    if (refreshing) return;
+    var version = ++statusVersion;
     activeTab().then(function (tab) {
+      if (version !== statusVersion) return;
       var provider = supported(tab);
-      $("#refresh").disabled = !provider;
       $("#sync").disabled = !provider;
-      if (!provider) { $("#status").textContent = "Open Claude, ChatGPT or Gemini."; return; }
-      $("#provider").textContent = UsageProviders.labels[provider] + (provider === "codex" ? " quota · shown in ChatGPT" : " quota");
       $("#gemini-note").hidden = provider !== "gemini";
+      if (!provider) {
+        $("#refresh").disabled = true;
+        $("#provider").textContent = "Claude · Codex · Gemini";
+        $("#status").textContent = "Open Claude, ChatGPT or Gemini.";
+        return;
+      }
+      $("#provider").textContent = UsageProviders.labels[provider] + (provider === "codex" ? " quota · shown in ChatGPT" : " quota");
       if (UsageProviders.isGeminiUsage(tab.url)) {
+        $("#refresh").disabled = true;
         $("#status").textContent = "Return to a Gemini conversation to refresh its meter.";
         return;
       }
       chrome.tabs.sendMessage(tab.id, { type: "cum-status" }, function (resp) {
-        if (chrome.runtime.lastError || !resp) { $("#status").textContent = "Reload this page to connect the extension."; return; }
-        getCfg().then(function (cfg) { updateVisibilityStatus(cfg, provider); });
-        if (resp.status === "error") { $("#status").textContent = resp.error || "Can't reach usage — check sign-in."; return; }
-        if (resp.hasData) {
+        var disconnected = chrome.runtime.lastError || !resp;
+        if (version !== statusVersion) return;
+        if (disconnected) {
+          $("#refresh").disabled = false;
+          $("#status").textContent = "Reload this page to connect the extension.";
+          return;
+        }
+        var wait = Math.max(0, Math.ceil(((resp.retryAt || 0) - Date.now()) / 1000));
+        $("#refresh").disabled = !!resp.busy || wait > 0;
+        if (resp.busy || wait || resp.status === "loading") statusTimer = setTimeout(refreshStatus, 1000);
+        if (wait) $("#status").textContent = "Rate limited — retry in " + wait + "s.";
+        else if (resp.busy) $("#status").textContent = "Refreshing usage in this page…";
+        else if (resp.status === "error") $("#status").textContent = resp.error || "Can't reach usage — check sign-in.";
+        else if (!$("#show-" + provider).checked) $("#status").textContent = "Quota bar hidden for " + UsageProviders.labels[provider] + ".";
+        else if (resp.hasData) {
           var seconds = Math.max(0, Math.round((Date.now() - resp.at) / 1000));
           $("#status").textContent = "Updated " + (seconds < 60 ? seconds + "s" : Math.round(seconds / 60) + "m") + " ago · percentages used";
         } else {
@@ -39,10 +60,6 @@
         }
       });
     });
-  }
-  function updateVisibilityStatus(cfg, provider) {
-    if (cfg[{ claude: "showClaude", codex: "showCodex", gemini: "showGemini" }[provider]] === false)
-      $("#status").textContent = "Quota bar hidden for " + UsageProviders.labels[provider] + ".";
   }
   function showTransparency(value) {
     var percent = typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(95, Math.round(value))) : DEF.transparency;
@@ -53,8 +70,8 @@
   }
   function save() {
     getCfg().then(function (cfg) {
-      cfg.pollSeconds = Math.min(86400, Math.max(10, Number($("#poll").value) || 15));
-      cfg.geminiPollMinutes = Math.min(1440, Math.max(1, Number($("#gemini-poll").value) || 5));
+      cfg.pollSeconds = UsageProviders.pollSetting("codex", $("#poll").value);
+      cfg.geminiPollMinutes = UsageProviders.pollSetting("gemini", $("#gemini-poll").value);
       $("#poll").value = cfg.pollSeconds;
       $("#gemini-poll").value = cfg.geminiPollMinutes;
       cfg.transparency = Number($("#transparency").value);
@@ -67,16 +84,21 @@
     });
   }
   $("#refresh").addEventListener("click", function () {
+    clearTimeout(statusTimer);
+    ++statusVersion;
+    refreshing = true;
+    $("#refresh").disabled = true;
+    $("#status").textContent = "Refreshing usage in this page…";
     activeTab().then(function (tab) {
-      if (!supported(tab)) return;
-      if (UsageProviders.isGeminiUsage(tab.url)) {
-        $("#status").textContent = "Return to a Gemini conversation to refresh its meter."; return;
+      if (!supported(tab) || UsageProviders.isGeminiUsage(tab.url)) {
+        refreshing = false; refreshStatus(); return;
       }
-      $("#refresh").disabled = true;
-      $("#status").textContent = "Refreshing usage in this page…";
       chrome.tabs.sendMessage(tab.id, { type: "cum-poll" }, function (resp) {
-        $("#refresh").disabled = false;
-        if (chrome.runtime.lastError || !resp) { $("#status").textContent = "Reload this page to connect the extension."; return; }
+        refreshing = false;
+        if (chrome.runtime.lastError || !resp) {
+          $("#refresh").disabled = false;
+          $("#status").textContent = "Reload this page to connect the extension."; return;
+        }
         refreshStatus();
       });
     });
@@ -92,8 +114,8 @@
   ["#poll", "#gemini-poll", "#debug", "#show-claude", "#show-codex", "#show-gemini"].forEach(function (selector) { $(selector).addEventListener("change", save); });
   getCfg().then(function (cfg) {
     showTransparency(cfg.transparency);
-    $("#poll").value = cfg.pollSeconds;
-    $("#gemini-poll").value = cfg.geminiPollMinutes;
+    $("#poll").value = UsageProviders.pollSetting("codex", cfg.pollSeconds);
+    $("#gemini-poll").value = UsageProviders.pollSetting("gemini", cfg.geminiPollMinutes);
     $("#debug").checked = cfg.debug;
     $("#show-claude").checked = cfg.showClaude !== false;
     $("#show-codex").checked = cfg.showCodex !== false;

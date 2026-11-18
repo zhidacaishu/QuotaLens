@@ -94,7 +94,7 @@ npm test
 
 **测试与验证**：
 单元测试采用模拟会话和坐标数据；Chromium 布局检查采用无需登录的合成测试页面。具体运行方法与验证边界请参阅[测试说明](docs/testing.md)。
-*注：因暂无 Claude 订阅账号，未在真实订阅页面下实测；[历史验证记录](docs/validation-history.md)中记录的 ChatGPT 与 Gemini 线上实测结果仅作存档参考，不代表当前版本进行了线上重新复核。*
+0.1.6 已在登录的 Chrome 中核对 ChatGPT、Gemini 的官方用量，并验证 Codex 工作模式和 Gemini 窄屏模式切换。本轮跳过了 Claude 页面。[测试说明](docs/testing.md)
 
 ## 致谢
 

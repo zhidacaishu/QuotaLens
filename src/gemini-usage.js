@@ -58,11 +58,11 @@
     calibrationTimer = null;
     var here;
     try { here = route(); } catch (_) { return; }
+    candidates = candidates.filter(function (candidate) { return Date.now() - candidate.capturedAt < 20000 && candidate.account === here.account; });
     if (!here.isUsage || !candidates.length) return;
     var dom = UsageProviders.parseGeminiDocument(document);
     // Require both independently labelled windows; missing DOM is not proof.
     if (!dom.five || !dom.weekly) return;
-    candidates = candidates.filter(function (candidate) { return Date.now() - candidate.capturedAt < 20000 && candidate.account === here.account; });
     var matching = candidates.filter(function (candidate) {
       return candidate.usage.five && candidate.usage.weekly &&
         Math.abs(candidate.usage.five.pct - dom.five.pct) <= 1 && Math.abs(candidate.usage.weekly.pct - dom.weekly.pct) <= 1;
@@ -116,10 +116,16 @@
   chrome.storage.onChanged.addListener(function (changes, area) {
     if (area !== "local") return;
     var here;
-    try { here = route(); } catch (_) { return; }
-    var entry = changes[key(here.account)];
-    if (!entry || !rpc.validId(entry.newValue) || recipes.get(here.account) === entry.newValue) return;
-    recipes.set(here.account, entry.newValue); changed();
+    try { here = route(); } catch (_) { here = null; }
+    Object.keys(changes).forEach(function (name) {
+      var match = /^geminiRpc:(\d+)$/.exec(name);
+      if (!match) return;
+      var value = changes[name].newValue;
+      var id = rpc.validId(value) ? value : rpc.DEFAULT_RPC;
+      if (recipes.get(match[1]) === id) return;
+      recipes.set(match[1], id);
+      if (here && here.account === match[1]) changed();
+    });
   });
   // Handles delayed Angular rendering and SPA navigation to the usage screen.
   new MutationObserver(scheduleCalibration).observe(document.documentElement, { childList: true, subtree: true, characterData: true });

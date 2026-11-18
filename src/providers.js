@@ -38,6 +38,14 @@
     return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
   }
 
+  // Stored in minutes for Gemini and seconds for the other providers.
+  function pollSetting(provider, value) {
+    var minutes = provider === "gemini";
+    var number = typeof value === "string" && value.trim() ? Number(value) : value;
+    if (!Number.isFinite(number)) return minutes ? 5 : 15;
+    return Math.min(minutes ? 1440 : 86400, Math.max(minutes ? 1 : 10, Math.round(number)));
+  }
+
   function parseCodex(data, now) {
     now = now || Date.now();
     var out = { five: null, weekly: null, at: now };
@@ -168,7 +176,7 @@
       texts.set(el, text);
       return text;
     }
-    Array.from(doc.querySelectorAll("h1,h2,h3,h4,div,span,p,label")).forEach(function (el) {
+    Array.from(doc.querySelectorAll("h1,h2,h3,h4,strong,div,span,p,label")).forEach(function (el) {
       if (!visible(el)) return;
       var text = visibleText(el).trim();
       var key = FIVE.test(text) ? "five" : WEEK.test(text) ? "weekly" : null;
@@ -193,5 +201,5 @@
 
   root.UsageProviders = { identify: identify, geminiAccount: geminiAccount, isGeminiUsage: isGeminiUsage,
     usageUrl: usageUrl, parseClaude: parseClaude, fetchClaude: fetchClaude, parseCodex: parseCodex, fetchCodex: fetchCodex, parseGeminiDocument: parseGeminiDocument,
-    percent: percent, labels: { claude: "Claude", codex: "Codex", gemini: "Gemini" } };
+    percent: percent, pollSetting: pollSetting, labels: { claude: "Claude", codex: "Codex", gemini: "Gemini" } };
 })(globalThis);

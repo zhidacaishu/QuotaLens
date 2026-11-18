@@ -681,3 +681,29 @@ test('polling intervals remain finite and within browser timer limits for malfor
     }
   }
 });
+
+test('Codex empty responses keep the collapsed indicator unavailable even after the stale threshold', async t => {
+  const env = await setup(t, { host: 'chatgpt.com', cfg: { collapsed: true }, fetchResponse: url => ({
+    ok: true, json: async () => url === '/api/auth/session' ? { accessToken: 'test' } : {}
+  }) });
+  const dot = env.bar().querySelector('.cum-restore .cum-live');
+  assert.equal(dot.title, 'Usage unavailable');
+  env.w.Date.now = () => Date.now() + 3600000;
+  env.render();
+  assert.equal(dot.title, 'Usage unavailable');
+  assert.equal(dot.textContent, '');
+});
+
+test('Gemini recalibration during an old in-flight refresh immediately uses the new recipe', async t => {
+  let calls = 0, finish;
+  const env = await setup(t, { host: 'gemini.google.com', route: '/app', geminiResponse: (_, cb) => {
+    calls++;
+    if (calls === 1) finish = cb;
+    else cb({ ok: true, usage: { five: { pct: 12 }, at: Date.now() } });
+  } });
+  env.w.dispatchEvent(new env.w.Event('cum-gemini-calibrated'));
+  finish({ ok: false, error: 'Old recipe failed' });
+  await flush();
+  assert.equal(calls, 2);
+  assert.equal((await env.message('cum-status')).status, 'ok');
+});

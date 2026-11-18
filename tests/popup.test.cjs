@@ -5,7 +5,7 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { flush } = require('./helpers.cjs');
 const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-async function setup(t, url, response = { status: 'ok', hasData: true, at: Date.now() }) {
+async function setup(t, url, response = { status: 'ok', hasData: true, at: Date.now() }, configure) {
   const dom = new JSDOM(read('popup.html'), { runScripts: 'outside-only' });
   const w = dom.window, sent = [], opened = [], stored = { cfg: { collapsed: true, staleMinutes: 12 } };
   t.after(async () => { await flush(); w.close(); });
@@ -17,6 +17,7 @@ async function setup(t, url, response = { status: 'ok', hasData: true, at: Date.
       create: value => opened.push(value.url)
     }
   };
+  if (configure) configure(w);
   w.eval(read('src/providers.js')); w.eval(read('popup.js'));
   await flush();
   return { w, sent, opened, stored, $: selector => w.document.querySelector(selector) };
@@ -98,4 +99,39 @@ test('transparency updates on input, persists zero, and restores without changin
 test('Gemini usage page popup explains calibration immediately instead of loading forever', async t => {
   const env = await setup(t, 'https://gemini.google.com/u/2/usage', { status: 'loading', hasData: false });
   assert.match(env.$('#status').textContent, /Return to a Gemini conversation/);
+});
+
+test('Gemini usage page disables the unavailable refresh action', async t => {
+  const env = await setup(t, 'https://gemini.google.com/u/2/usage');
+  assert.equal(env.$('#refresh').disabled, true);
+  assert.equal(env.$('#sync').disabled, false);
+});
+
+test('popup follows an ongoing refresh and rate-limit expiry without manual clicks', async t => {
+  const response = { status: 'loading', busy: true };
+  let nextStatus;
+  const env = await setup(t, 'https://chatgpt.com/', response, w => {
+    w.setTimeout = fn => { nextStatus = fn; };
+  });
+  assert.equal(env.$('#refresh').disabled, true);
+  Object.assign(response, { status: 'error', busy: false, retryAt: Date.now() + 60000, error: 'Rate limited' });
+  nextStatus(); await flush();
+  assert.match(env.$('#status').textContent, /retry in/i);
+  assert.equal(env.$('#refresh').disabled, true);
+  Object.assign(response, { status: 'ok', retryAt: 0, hasData: true, at: Date.now() });
+  nextStatus(); await flush();
+  assert.match(env.$('#status').textContent, /Updated/);
+  assert.equal(env.$('#refresh').disabled, false);
+});
+
+test('popup clamps zero intervals and accepts only whole seconds and minutes', async t => {
+  const env = await setup(t, 'https://chatgpt.com/');
+  env.$('#poll').value = '0'; env.$('#gemini-poll').value = '0';
+  env.$('#poll').dispatchEvent(new env.w.Event('change')); await flush();
+  assert.equal(env.stored.cfg.pollSeconds, 10);
+  assert.equal(env.stored.cfg.geminiPollMinutes, 1);
+  env.$('#poll').value = '12'; env.$('#gemini-poll').value = '7.9';
+  env.$('#gemini-poll').dispatchEvent(new env.w.Event('change')); await flush();
+  assert.equal(env.$('#poll').validity.valid, true);
+  assert.equal(env.stored.cfg.geminiPollMinutes, 8);
 });

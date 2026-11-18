@@ -2,7 +2,7 @@
 (function (root) {
   "use strict";
   function create(provider, schedule) {
-    var codexComposer = '[data-composer-surface-variant], #composer-background, form[data-chatgpt-composer], form[data-type="unified-composer"]';
+    var codexComposer = '[data-codex-composer-root], [data-composer-surface-variant], #composer-background, form[data-chatgpt-composer], form[data-type="unified-composer"]';
     function isNonChatPage() {
       return provider === "codex" && (/^\/(?:codex\/)?settings(?:\/|$)/i.test(location.pathname) ||
         /^#settings(?:[\/=?]|$)/i.test(location.hash));
@@ -60,7 +60,9 @@
         ? codexComposer
         : provider === "gemini" ? 'input-area-v2, .input-area-container, .input-area-fieldset'
         : '[data-testid="chat-input-container"], [data-testid="composer"]';
-      var known = editable.closest(selectors);
+      // In Work mode the environment toolbar is a sibling of the input card.
+      var known = provider === "codex" && editable.closest("[data-codex-composer-root]");
+      if (!known || !known.getClientRects().length) known = editable.closest(selectors);
       if (known && known !== editable) {
         var knownBox = known.getBoundingClientRect();
         if (knownBox.width && knownBox.height) return known;
@@ -80,7 +82,7 @@
       return editable;
     }
 
-    var composerObserver = null, observedEditor = null, observedBoundary = null;
+    var composerObserver = null, observedEditor = null, observedBoundary = null, observedToggle = null;
     var greetingAdjustment = null;
     function restoreGreeting() {
       if (!greetingAdjustment) return;
@@ -111,19 +113,22 @@
         break;
       }
     }
-    function observeComposer(editable, boundary) {
-      if (editable === observedEditor && boundary === observedBoundary) return;
+    function observeComposer(editable, boundary, toggle = null) {
+      if (editable === observedEditor && boundary === observedBoundary && toggle === observedToggle) return;
       if (composerObserver) composerObserver.disconnect();
-      observedEditor = editable; observedBoundary = boundary;
+      observedEditor = editable; observedBoundary = boundary; observedToggle = toggle;
       if (!editable || typeof ResizeObserver === "undefined") return;
       if (!composerObserver) composerObserver = new ResizeObserver(schedule);
       composerObserver.observe(editable);
       if (boundary && boundary !== editable) composerObserver.observe(boundary);
+      if (toggle) composerObserver.observe(toggle);
     }
 
     function placeBar(barEl, editable, collapsed) {
       var boundary = editable ? composerBoundary(editable) : null;
-      observeComposer(editable, boundary);
+      var area = provider === "gemini" && editable && editable.closest(".input-area-container");
+      var toggle = area ? area.querySelector("chat-spark-toggle") : null;
+      observeComposer(editable, boundary, toggle);
       barEl.classList.remove("cum-composer", "cum-narrow", "cum-compact");
       ["top", "left", "right", "width"].forEach(function (key) { barEl.style.removeProperty(key); });
       if (boundary) {
@@ -134,7 +139,14 @@
         barEl.classList.toggle("cum-compact", width < 760);
         if (!collapsed) barEl.style.width = width + "px";
         var size = barEl.getBoundingClientRect();
-        var top = rect.top - size.height - 6;
+        // Gemini moves Chat / Task above the input at mobile widths. Keep the
+        // input's horizontal bounds while leaving both controls accessible.
+        var anchorTop = rect.top;
+        if (toggle && getComputedStyle(toggle).visibility !== "hidden") {
+          var toggleBox = toggle.getBoundingClientRect();
+          if (toggleBox.height && toggleBox.right > rect.left && toggleBox.left < rect.right) anchorTop = Math.min(anchorTop, toggleBox.top);
+        }
+        var top = anchorTop - size.height - 6;
         // Retain the corner dock if scrolling/expansion leaves no room above.
         if (top >= 16 && rect.top < window.innerHeight && rect.bottom > 0) {
           barEl.style.top = top + "px";
@@ -146,16 +158,17 @@
           barEl.style.removeProperty("width");
         }
       }
-      protectEditor(barEl, boundary);
+      protectEditor(barEl, boundary, toggle);
     }
 
     // If a resized/expanded editor reaches the dock, temporarily hide the meter.
     // Visibility preserves its dimensions so it can reappear when space returns.
-    function protectEditor(barEl, boundary) {
+    function protectEditor(barEl, boundary, toggle) {
       var overlaps = false;
       var bar = barEl.getBoundingClientRect();
       var editors = Array.from(document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"], [role="dialog"], [aria-modal="true"]'));
       if (boundary) editors.push(boundary);
+      if (toggle) editors.push(toggle);
       for (var i = 0; i < editors.length; i++) {
         var editor = editors[i];
         if (!editor.getClientRects().length || getComputedStyle(editor).visibility === "hidden") continue;
