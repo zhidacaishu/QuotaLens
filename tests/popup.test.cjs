@@ -135,3 +135,13 @@ test('popup clamps zero intervals and accepts only whole seconds and minutes', a
   assert.equal(env.$('#poll').validity.valid, true);
   assert.equal(env.stored.cfg.geminiPollMinutes, 8);
 });
+
+test('popup does not show done checkmark when provider is hidden and refresh returns empty', async t => {
+  const env = await setup(t, 'https://chatgpt.com/c/test', { ok: false, status: 'empty', outcome: 'empty', hasData: false });
+  env.$('#show-codex').checked = false;
+  env.$('#show-codex').dispatchEvent(new env.w.Event('change'));
+  await flush();
+  env.$('#refresh').click();
+  await flush();
+  assert.equal(env.$('#refresh').getAttribute('data-feedback'), null);
+});

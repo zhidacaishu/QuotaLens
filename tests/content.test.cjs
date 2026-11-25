@@ -482,12 +482,12 @@ test('polling cancels old intervals on settings changes and while hidden', async
 
 test('ResizeObserver schedules placement and disconnects when the bar is hidden', async t => {
   const env = await setup(t);
-  // Drain any already scheduled initial mutation render.
-  env.pending.filter(fn => fn.delay === 200 && !fn.cancelled).forEach(fn => fn());
+  // Drain any already scheduled initial mutation or layout render.
+  env.pending.filter(fn => (fn.delay === 120 || fn.delay === 16) && !fn.cancelled).forEach(fn => fn());
   const before = env.pending.length;
   env.boxes.set('composer', rect(100, 450, 700, 290));
   env.resize(env.w.document.getElementById('composer'));
-  const scheduled = env.pending.slice(before).find(fn => fn.delay === 200);
+  const scheduled = env.pending.slice(before).find(fn => fn.delay === 16);
   assert.ok(scheduled);
   scheduled();
   assert.equal(env.bar().getBoundingClientRect().bottom, 444);

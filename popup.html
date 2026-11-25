@@ -15,13 +15,17 @@
 
     <section class="glass connection" aria-label="Current connection">
       <h2 id="provider">Claude · Codex · Gemini</h2>
-      <p id="status" role="status">Connecting…</p>
+      <p id="status">Connecting…</p>
+      <div id="sr-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
       <div class="actions">
         <button id="refresh" class="primary" type="button" disabled>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2.34 5.66"/></svg>
+          <span class="btn-icon" aria-hidden="true">
+            <span class="icon-refresh-slot"><svg class="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2.34 5.66"/></svg></span>
+            <svg class="icon-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+          </span>
           Refresh now
         </button>
-        <button id="sync" type="button" disabled>Usage page <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></button>
+        <button id="sync" type="button" disabled>Usage page <svg class="icon-external" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></button>
       </div>
       <p id="gemini-note" class="note" hidden>If usage is unavailable, open Usage page to recalibrate.</p>
     </section>
@@ -44,22 +48,24 @@
       </div>
     </section>
     <details class="settings advanced">
-      <summary class="section-title">Advanced settings</summary>
-      <section class="settings" aria-labelledby="refresh-heading">
-        <h2 id="refresh-heading" class="section-title">Refresh intervals</h2>
+      <summary class="section-title"><svg class="disclosure-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>Advanced settings</summary>
+      <div class="advanced-body">
+        <section class="settings" aria-labelledby="refresh-heading">
+          <h2 id="refresh-heading" class="section-title">Refresh intervals</h2>
+          <div class="glass settings-card">
+            <label class="setting-row" for="poll"><span>Claude / Codex<span class="detail">While the page is visible</span></span><span class="number-control"><input id="poll" type="number" max="86400" min="10" step="1" aria-label="Claude / Codex refresh interval in seconds" /><span>sec</span></span></label>
+            <label class="setting-row" for="gemini-poll"><span>Gemini<span class="detail">Also refreshes after replies</span></span><span class="number-control"><input id="gemini-poll" type="number" max="1440" min="1" step="1" aria-label="Gemini refresh interval in minutes" /><span>min</span></span></label>
+          </div>
+        </section>
         <div class="glass settings-card">
-          <label class="setting-row" for="poll"><span>Claude / Codex<span class="detail">While the page is visible</span></span><span class="number-control"><input id="poll" type="number" max="86400" min="10" step="1" aria-label="Claude / Codex refresh interval in seconds" /><span>sec</span></span></label>
-          <label class="setting-row" for="gemini-poll"><span>Gemini<span class="detail">Also refreshes after replies</span></span><span class="number-control"><input id="gemini-poll" type="number" max="1440" min="1" step="1" aria-label="Gemini refresh interval in minutes" /><span>min</span></span></label>
+          <label class="setting-row" for="debug"><span>Debug logging<span class="detail">Extra details for troubleshooting</span></span><input class="switch" id="debug" type="checkbox" role="switch" /></label>
         </div>
-      </section>
-      <div class="glass settings-card">
-        <label class="setting-row" for="debug"><span>Debug logging<span class="detail">Extra details for troubleshooting</span></span><input class="switch" id="debug" type="checkbox" role="switch" /></label>
       </div>
     </details>
 
     <footer>
       <div class="privacy-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v5c0 5-8 10-8 10S4 16 4 11V6l8-3Z"/><path d="m8.5 11.5 2.5 2.5 4.5-5"/></svg> Direct from official sources</div>
-      <p>Browser sign-in only. No API key or external server.</p>
+      <p>Uses your browser sign-in. No API key or QuotaLens server.</p>
     </footer>
   </main>
   <script src="src/providers.js"></script>

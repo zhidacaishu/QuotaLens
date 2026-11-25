@@ -1,6 +1,29 @@
 /* QuotaLens — adaptive glass quota bar. No external assets or filter libraries. */
 
+@property --cum-fill-a {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: #71a995;
+}
+@property --cum-fill-b {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: #91c5b0;
+}
+
 #cum-bar {
+  /* Unified motion language shared with popup.css. */
+  --cum-motion-fast: 140ms;
+  --cum-motion-control: 220ms;
+  --cum-motion-surface: 260ms;
+  --cum-motion-exit: 160ms;
+  --cum-motion-data: 420ms;
+  --cum-motion-color: 320ms;
+  --cum-ease-std: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --cum-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --cum-ease-decel: cubic-bezier(0.22, 1, 0.36, 1);
+  --cum-ease-exit: cubic-bezier(0.32, 0, 0.67, 0);
+
   /* Neutral, low-opacity glass follows the host page instead of tinting it blue. */
   --sheen: rgba(255, 255, 255, 0.025);
   --sheen-end: rgba(255, 255, 255, 0.008);
@@ -38,8 +61,14 @@
   border-radius: 16px;
   -webkit-backdrop-filter: blur(12px) saturate(105%);
   backdrop-filter: blur(12px) saturate(105%);
-  animation: cum-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transform-origin: center bottom;
+  transition:
+    background-color var(--cum-motion-fast) var(--cum-ease-std),
+    border-color var(--cum-motion-fast) var(--cum-ease-std),
+    box-shadow var(--cum-motion-fast) var(--cum-ease-std),
+    opacity var(--cum-motion-control) var(--cum-ease-decel),
+    transform var(--cum-motion-control) var(--cum-ease-decel),
+    visibility 0s linear 0s;
 }
 /* Keep the same material in every layout, including already-open pages. */
 #cum-bar,
@@ -54,13 +83,67 @@
   background-color: var(--surface-hover);
   border-color: var(--border-hover);
 }
+#cum-bar.cum-obscured {
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    background-color var(--cum-motion-fast) var(--cum-ease-std),
+    border-color var(--cum-motion-fast) var(--cum-ease-std),
+    box-shadow var(--cum-motion-fast) var(--cum-ease-std),
+    opacity var(--cum-motion-exit) var(--cum-ease-exit),
+    visibility 0s linear var(--cum-motion-exit);
+}
+#cum-bar.cum-obscured .cum-main,
+#cum-bar.cum-obscured .cum-restore {
+  transform: translateY(-2px);
+  transition: transform var(--cum-motion-exit) var(--cum-ease-exit);
+}
+#cum-bar.cum-entering {
+  animation: cum-in 200ms var(--cum-ease-decel) both;
+}
+#cum-bar.cum-entering .cum-main,
+#cum-bar.cum-entering .cum-restore {
+  animation: cum-content-in var(--cum-motion-control) var(--cum-ease-decel) both;
+}
+#cum-bar .cum-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 #cum-bar .cum-source { display: none; }
 #cum-bar .cum-source:hover { color: var(--txt); text-decoration: underline; }
 #cum-bar.cum-collapsed .cum-source { display: none; }
 #cum-bar[data-provider="gemini"] .cum-source { display: none; }
 #cum-bar .cum-unavailable { opacity: 0.55; }
 
-@keyframes cum-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+@keyframes cum-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes cum-content-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes cum-breathe {
+  0%, 100% { opacity: 0.92; }
+  50% { opacity: 0.48; }
+}
+@keyframes cum-alert-ring {
+  from { opacity: 0.5; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.9); }
+}
+@keyframes cum-nudge {
+  0%, 100% { transform: translateX(0); }
+  22% { transform: translateX(-3px); }
+  52% { transform: translateX(2.5px); }
+  78% { transform: translateX(-1.5px); }
+}
 
 /* layout */
 #cum-bar .cum-main { display: flex; align-items: center; width: 100%; gap: 16px; }
@@ -68,7 +151,7 @@
 #cum-bar .cum-meta { display: flex; align-items: center; gap: 9px; margin-left: auto; flex: none; }
 
 /* meter */
-#cum-bar .cum-meter { display: flex; align-items: center; gap: 9px; }
+#cum-bar .cum-meter { display: flex; align-items: center; gap: 9px; transition: opacity var(--cum-motion-control) var(--cum-ease-std); }
 #cum-bar .cum-label {
   font-size: 10px;
   font-weight: 500;
@@ -86,16 +169,23 @@
   overflow: hidden;
 }
 #cum-bar .cum-fill {
+  --cum-fill-a: var(--green-start);
+  --cum-fill-b: var(--green-end);
   display: block;
   height: 100%;
-  width: 0;
+  width: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--green-start), var(--green-end));
+  background: linear-gradient(90deg, var(--cum-fill-a), var(--cum-fill-b));
   box-shadow: none;
-  transition: width 0.55s cubic-bezier(0.2, 0.7, 0.2, 1), background 0.3s ease, box-shadow 0.3s ease;
+  transform-origin: left center;
+  transform: scaleX(var(--cum-pct-scale, 0));
+  transition:
+    transform var(--cum-motion-data) var(--cum-ease-decel),
+    --cum-fill-a var(--cum-motion-color) var(--cum-ease-std),
+    --cum-fill-b var(--cum-motion-color) var(--cum-ease-std);
 }
-#cum-bar .cum-fill.cum-amber { background: linear-gradient(90deg, var(--amber-start), var(--amber-end)); box-shadow: none; }
-#cum-bar .cum-fill.cum-red { background: linear-gradient(90deg, var(--red-start), var(--red-end)); box-shadow: none; }
+#cum-bar .cum-fill.cum-amber { --cum-fill-a: var(--amber-start); --cum-fill-b: var(--amber-end); box-shadow: none; }
+#cum-bar .cum-fill.cum-red { --cum-fill-a: var(--red-start); --cum-fill-b: var(--red-end); box-shadow: none; }
 #cum-bar .cum-pct {
   font-size: 11.5px;
   font-weight: 500;
@@ -114,12 +204,26 @@
 
 /* meta: live dot + updated + minimize */
 #cum-bar .cum-live {
+  position: relative;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   flex: none;
   background: var(--green-end);
   box-shadow: none;
+  transition:
+    background-color var(--cum-motion-control) var(--cum-ease-std),
+    border-color var(--cum-motion-control) var(--cum-ease-std),
+    color var(--cum-motion-control) var(--cum-ease-std);
+}
+#cum-bar .cum-live.cum-alert-ping::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  pointer-events: none;
+  animation: cum-alert-ring 420ms var(--cum-ease-decel) forwards;
 }
 /* Reserve a stable slot across just now / 9s ago / 10s ago / 1m ago. */
 #cum-bar .cum-updated {
@@ -131,6 +235,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color var(--cum-motion-fast) var(--cum-ease-std);
 }
 #cum-bar .cum-refresh,
 #cum-bar .cum-min,
@@ -150,6 +255,7 @@
 #cum-bar .cum-restore:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 #cum-bar .cum-refresh,
 #cum-bar .cum-min {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -158,19 +264,76 @@
   border-radius: 50%;
   color: var(--muted);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background-color var(--cum-motion-fast) var(--cum-ease-std),
+    color var(--cum-motion-fast) var(--cum-ease-std),
+    transform var(--cum-motion-fast) var(--cum-ease-std),
+    opacity var(--cum-motion-fast) var(--cum-ease-std);
 }
-#cum-bar .cum-refresh:active,
-#cum-bar .cum-min:active { background: var(--control-hover); }
-#cum-bar .cum-refresh:hover,
+#cum-bar .cum-refresh:hover:not([aria-disabled="true"]),
 #cum-bar .cum-min:hover { background: var(--control-hover); color: var(--txt); }
+#cum-bar .cum-refresh:active:not([aria-disabled="true"]),
+#cum-bar .cum-min:active { background: var(--control-hover); transform: scale(0.9); }
 #cum-bar .cum-refresh svg,
 #cum-bar .cum-min svg { width: 13px; height: 13px; display: block; }
+#cum-bar .cum-min svg { transition: transform var(--cum-motion-fast) var(--cum-ease-spring); }
+#cum-bar .cum-refresh .cum-refresh-slot,
+#cum-bar .cum-refresh .cum-icon-check {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  display: inline-grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  transition:
+    opacity var(--cum-motion-fast) var(--cum-ease-std),
+    transform var(--cum-motion-control) var(--cum-ease-spring);
+}
+#cum-bar .cum-refresh .cum-icon-refresh {
+  transition: transform var(--cum-motion-fast) var(--cum-ease-spring);
+}
+@media (hover: hover) {
+  #cum-bar .cum-min:hover svg { transform: translateY(-1px); }
+  #cum-bar .cum-refresh:hover:not([aria-disabled="true"]):not([aria-busy="true"]):not([data-feedback="done"]) .cum-icon-refresh {
+    transform: rotate(24deg);
+  }
+  #cum-bar .cum-restore:hover .cum-chev { transform: translateY(1px); }
+}
+#cum-bar .cum-refresh .cum-icon-check {
+  opacity: 0;
+  transform: scale(0.55);
+  color: var(--green-end);
+  pointer-events: none;
+}
+#cum-bar .cum-refresh .cum-icon-check path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  transition: stroke-dashoffset var(--cum-motion-surface) var(--cum-ease-decel);
+}
+#cum-bar .cum-refresh[data-feedback="done"] .cum-refresh-slot {
+  opacity: 0;
+  transform: scale(0.55) rotate(45deg);
+}
+#cum-bar .cum-refresh[data-feedback="done"] .cum-icon-check {
+  opacity: 1;
+  transform: scale(1);
+}
+#cum-bar .cum-refresh[data-feedback="done"] .cum-icon-check path {
+  stroke-dashoffset: 0;
+}
+#cum-bar .cum-refresh.cum-nudge,
+#cum-bar .cum-status.cum-nudge {
+  animation: cum-nudge 280ms var(--cum-ease-std);
+}
 
 #cum-bar .cum-status { font-size: 11px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+#cum-bar[data-state="loading"] .cum-live {
+  animation: cum-breathe 1.6s ease-in-out infinite;
+}
 
 /* collapsed chip */
-#cum-bar.cum-collapsed { width: auto; padding: 6px 13px; }
+#cum-bar.cum-collapsed { width: auto; padding: 6px 13px; transform-origin: right bottom; }
 #cum-bar .cum-restore {
   display: inline-flex;
   align-items: center;
@@ -179,9 +342,15 @@
   color: var(--txt);
   font-size: 11px;
   font-weight: 500;
+  transition: transform var(--cum-motion-fast) var(--cum-ease-std);
 }
+#cum-bar .cum-restore:active { transform: scale(0.97); }
 #cum-bar .cum-chip-text { letter-spacing: 0.01em; }
-#cum-bar .cum-restore .cum-chev { display: inline-flex; color: var(--muted); transition: color 0.15s ease; }
+#cum-bar .cum-restore .cum-chev {
+  display: inline-flex;
+  color: var(--muted);
+  transition: color var(--cum-motion-fast) var(--cum-ease-std), transform var(--cum-motion-fast) var(--cum-ease-spring);
+}
 #cum-bar .cum-restore .cum-chev svg { width: 12px; height: 12px; display: block; }
 #cum-bar .cum-restore:hover .cum-chev { color: var(--txt); }
 
@@ -197,7 +366,6 @@
   max-width: calc(100vw - 32px);
   margin: 0;
   padding: 6px 10px;
-  animation: none;
 }
 /* One flexible track per quota; numeric and time columns keep their width. */
 #cum-bar.cum-code-dock .cum-main { gap: 10px; min-height: 20px; }
@@ -331,7 +499,7 @@ body.dark-theme #cum-bar {
 
 /* accessibility: respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  #cum-bar, #cum-bar * { animation: none !important; transition: none !important; }
+  #cum-bar, #cum-bar *, #cum-bar *::before, #cum-bar *::after { animation: none !important; transition: none !important; }
 }
 
 /* Keep stale/loading/error indicators honest, including the collapsed chip. */
@@ -367,8 +535,8 @@ body.dark-theme #cum-bar {
   font-weight: 700;
   line-height: 1;
 }
-#cum-bar .cum-refresh[aria-disabled="true"] { opacity: .5; cursor: default; }
-#cum-bar .cum-refresh[aria-busy="true"] svg { animation: cum-spin 1s linear infinite; }
+#cum-bar .cum-refresh[aria-disabled="true"] { opacity: .48; cursor: default; }
+#cum-bar .cum-refresh[aria-busy="true"]:not([data-waapi-spin="true"]) .cum-icon-refresh { animation: cum-spin 0.85s linear infinite; }
 @keyframes cum-spin { to { transform: rotate(360deg); } }
 /* Stack the two actions alongside the two quota rows to preserve track space. */
 #cum-bar.cum-code-dock .cum-meta { display: grid; grid-template-columns: auto 20px; gap: 4px 6px; }
@@ -378,7 +546,7 @@ body.dark-theme #cum-bar {
 #cum-bar.cum-composer:not(.cum-narrow) .cum-meta { display: flex; gap: 6px; }
 
 #cum-bar.cum-code-dock:not(.cum-composer) .cum-meter,
-#cum-bar.cum-narrow .cum-meter { grid-template-columns: 36px minmax(12px, 1fr) 34px minmax(0, 52px); gap: 5px; }
+#cum-bar.cum-code-dock.cum-composer.cum-narrow .cum-meter { grid-template-columns: 42px minmax(12px, 1fr) 36px minmax(0, 52px); gap: 5px; }
 
 @media (forced-colors: active) {
   #cum-bar[data-state="error"] .cum-live, #cum-bar[data-state="stale"] .cum-live { color: CanvasText; }

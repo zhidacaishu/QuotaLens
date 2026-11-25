@@ -8,8 +8,42 @@
   var provider = UsageProviders.identify(location.href);
   if (!provider) return;
   var providerLabel = UsageProviders.labels[provider];
-  var layout = UsageLayout.create(provider, schedule);
+  var layout = UsageLayout.create(provider, scheduleLayout);
   var scope = providerScope(), scopeVersion = 0, account = null, lastAttempt = 0, retryAt = 0, rateLimited = false, errorText = "";
+
+  var motionMedia = null;
+  try {
+    if (typeof window.matchMedia === "function") motionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+  } catch (_) {}
+  function motionAllowed() {
+    return !!(motionMedia && !motionMedia.matches);
+  }
+  function currentAngle(el) {
+    try {
+      var transform = getComputedStyle(el).transform;
+      if (!transform || transform === "none") return 0;
+      var match = transform.match(/matrix\(([^)]+)\)/);
+      if (!match) return 0;
+      var parts = match[1].split(",").map(Number);
+      var deg = Math.atan2(parts[1], parts[0]) * (180 / Math.PI);
+      return ((deg % 360) + 360) % 360;
+    } catch (_) { return 0; }
+  }
+  function settleAllMotion() {
+    cancelCollapseAnims();
+    if (refreshSpinAnim) { try { refreshSpinAnim.cancel(); } catch (_) {} refreshSpinAnim = null; }
+    if (els && els.refresh) els.refresh.removeAttribute("data-waapi-spin");
+    if (els) {
+      cancelMeterAnims(els.five, true);
+      cancelMeterAnims(els.weekly, true);
+    }
+    if (barEl) barEl.classList.remove("cum-entering");
+  }
+  if (motionMedia && typeof motionMedia.addEventListener === "function") {
+    motionMedia.addEventListener("change", function () {
+      if (motionMedia.matches) settleAllMotion();
+    });
+  }
 
   function providerScope() {
     if (provider !== "gemini") return provider;
@@ -62,16 +96,40 @@
   chrome.storage.onChanged.addListener(function (ch, area) {
     if (area !== "local" || !ch.cfg) return;
     var previous = cfg;
-    cfg = Object.assign(shallow(DEFAULTS), ch.cfg.newValue || {});
-    delete cfg.hidden;
+    var nextCfg = Object.assign(shallow(DEFAULTS), ch.cfg.newValue || {});
+    delete nextCfg.hidden;
+    var collapsedChanged = Boolean(previous.collapsed) !== Boolean(nextCfg.collapsed);
+    var beforeRect = collapsedChanged && barEl && barEl.isConnected ? barEl.getBoundingClientRect() : null;
+    cfg = nextCfg;
+    var onlyTransparency = previous.pollSeconds === cfg.pollSeconds &&
+      previous.geminiPollMinutes === cfg.geminiPollMinutes &&
+      previous.debug === cfg.debug &&
+      previous.showClaude === cfg.showClaude &&
+      previous.showCodex === cfg.showCodex &&
+      previous.showGemini === cfg.showGemini &&
+      previous.staleMinutes === cfg.staleMinutes &&
+      !collapsedChanged &&
+      previous.transparency !== cfg.transparency;
+    if (onlyTransparency && barEl && barEl.isConnected) {
+      var transparency = typeof cfg.transparency === "number" && Number.isFinite(cfg.transparency) ? Math.max(0, Math.min(95, Math.round(cfg.transparency))) : DEFAULTS.transparency;
+      barEl.style.setProperty("--surface-alpha", (1 - transparency / 100).toFixed(2));
+      return;
+    }
     if (previous.pollSeconds !== cfg.pollSeconds || previous.geminiPollMinutes !== cfg.geminiPollMinutes) restartPolling();
     render();
+    if (collapsedChanged) animateCollapseToggle(!!cfg.collapsed, beforeRect);
   });
 
   // popup <-> content
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (!msg || !msg.type) return;
-    if (msg.type === "cum-poll") { loadUsage(true).then(function () { sendResponse({ ok: status === "ok", status: status }); }); return true; }
+    if (msg.type === "cum-poll") {
+      loadUsage(true, false, true).then(function (result) {
+        var r = result || { ok: status === "ok", status: status, outcome: status };
+        sendResponse({ ok: !!r.ok, status: r.status || status, outcome: r.outcome || status });
+      });
+      return true;
+    }
     if (msg.type === "cum-status") {
       if (providerScope() !== scope) render();
       sendResponse({ provider: providerLabel, hasData: !!usage, at: usage && usage.at, status: status, error: errorText,
@@ -81,16 +139,22 @@
   });
 
   /* --------------------------- API calls ----------------------------- */
-  function loadUsage(force, afterGeneration) {
-    if (provider === "gemini" && UsageProviders.isGeminiUsage(location.href)) return Promise.resolve();
-    if (usageInFlight) return afterGeneration ? usageInFlight.then(function () { return loadUsage(false, true); }) : usageInFlight;
+  function loadUsage(force, afterGeneration, manual) {
+    if (provider === "gemini" && UsageProviders.isGeminiUsage(location.href)) return Promise.resolve({ ok: false, status: status, outcome: "skipped" });
+    if (usageInFlight) {
+      return afterGeneration
+        ? usageInFlight.then(function () { return loadUsage(false, true, false); })
+        : usageInFlight;
+    }
     var now = Date.now();
-    if ((now < retryAt && (!force || rateLimited)) || (!force && !afterGeneration && lastAttempt && now - lastAttempt < pollInterval())) return Promise.resolve();
+    if (now < retryAt && (!force || rateLimited)) return Promise.resolve({ ok: false, status: status, outcome: "cooldown" });
+    if (!force && !afterGeneration && lastAttempt && now - lastAttempt < pollInterval()) return Promise.resolve({ ok: status === "ok", status: status, outcome: "skipped" });
+    // Clear any lingering checkmark before entering busy from any trigger.
+    clearRefreshFeedback();
     // A -> B -> A must invalidate requests from before the first account switch.
     var requestedScope = scope, requestedVersion = scopeVersion;
     lastAttempt = now;
     if (!usage) status = "loading";
-    render();
     // Initialization errors must enter the same error path as network failures;
     // otherwise a missing adapter leaves the UI stuck on Loading forever.
     var expired = false, deadlineTimer;
@@ -111,12 +175,13 @@
         reject(new Error("Usage request timed out. Try refreshing again."));
       }, 45000);
     });
+    var result = { ok: false, status: status, outcome: "superseded" };
     usageInFlight = Promise.race([request, deadline]).then(function (data) {
       if (requestedVersion !== scopeVersion || requestedScope !== providerScope()) return;
       usage = data && (data.five || data.weekly) ? data : null;
       status = usage ? "ok" : "empty";
       errorText = ""; retryAt = 0; rateLimited = false;
-      render();
+      result = { ok: status === "ok", status: status, outcome: status };
     }).catch(function (error) {
       if (requestedVersion !== scopeVersion || requestedScope !== providerScope()) return;
       status = "error";
@@ -125,14 +190,16 @@
       rateLimited = error.status === 429;
       if (error.status === 401 || error.status === 403) { usage = null; account = null; }
       retryAt = Date.now() + (error.retryMs || (provider === "gemini" ? geminiInterval() : 60000));
-      render();
+      result = { ok: false, status: "error", outcome: "error" };
     }).then(function () {
       clearTimeout(deadlineTimer);
       expired = true;
       usageInFlight = null;
       if (calibrationPending) { calibrationPending = false; refreshAfterCalibration(); }
       render();
+      if (manual && result.outcome !== "superseded") finishManualRefresh(result.outcome);
       if (requestedVersion !== scopeVersion && document.visibilityState === "visible") loadUsage(false);
+      return result;
     });
     render();
     return usageInFlight;
@@ -189,19 +256,189 @@
     return Math.round(h / 24) + "d ago";
   }
 
-  function svg(inner) {
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+  function svg(inner, cls) {
+    return '<svg' + (cls ? ' class="' + cls + '"' : "") + ' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+  }
+
+  var collapseAnims = [];
+  function cancelCollapseAnims() {
+    while (collapseAnims.length) {
+      try { collapseAnims.pop().cancel(); } catch (_) {}
+    }
+  }
+  function trackAnim(anim) {
+    if (!anim) return;
+    collapseAnims.push(anim);
+    var cleanup = function () {
+      var idx = collapseAnims.indexOf(anim);
+      if (idx !== -1) collapseAnims.splice(idx, 1);
+    };
+    anim.onfinish = cleanup;
+    anim.oncancel = cleanup;
+  }
+
+  function animateCollapseToggle(collapsed, beforeRect) {
+    cancelCollapseAnims();
+    if (!motionAllowed() || !barEl || !barEl.isConnected || !els || !beforeRect || !beforeRect.width || typeof barEl.animate !== "function") return;
+    var afterRect = barEl.getBoundingClientRect();
+    if (!afterRect.width) return;
+    try {
+      var insetLeft = Math.max(0, Math.round(beforeRect.left - afterRect.left));
+      var insetRight = Math.max(0, Math.round(afterRect.right - beforeRect.right));
+      var insetTop = Math.max(0, Math.round(beforeRect.top - afterRect.top));
+      var insetBottom = Math.max(0, Math.round(afterRect.bottom - beforeRect.bottom));
+      if (!collapsed) {
+        trackAnim(barEl.animate(
+          [{ clipPath: "inset(" + insetTop + "px " + insetRight + "px " + insetBottom + "px " + insetLeft + "px round 14px)" },
+            { clipPath: "inset(0px 0px 0px 0px round 14px)" }],
+          { duration: 260, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
+        ));
+        trackAnim(els.main.animate(
+          [{ opacity: 0, transform: "translateX(8px)" }, { opacity: 1, transform: "translateX(0)" }],
+          { duration: 200, delay: 25, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "backwards" }
+        ));
+        var minIcon = els.min && els.min.querySelector("svg");
+        if (minIcon && typeof minIcon.animate === "function") {
+          trackAnim(minIcon.animate(
+            [{ transform: "rotate(180deg)" }, { transform: "rotate(0deg)" }],
+            { duration: 240, easing: "cubic-bezier(0.32, 0.72, 0, 1)" }
+          ));
+        }
+      } else {
+        var shiftX = Math.max(-16, Math.min(16, Math.round((beforeRect.left + beforeRect.width / 2) - (afterRect.left + afterRect.width / 2))));
+        trackAnim(barEl.animate(
+          [{ transform: "translateX(" + shiftX + "px)", opacity: 0.78 }, { transform: "translateX(0)", opacity: 1 }],
+          { duration: 200, easing: "cubic-bezier(0.32, 0.72, 0, 1)" }
+        ));
+        trackAnim(els.chip.animate(
+          [{ opacity: 0, transform: "translateX(-5px)" }, { opacity: 1, transform: "translateX(0)" }],
+          { duration: 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
+        ));
+        var chevIcon = els.chip.querySelector(".cum-chev svg");
+        if (chevIcon && typeof chevIcon.animate === "function") {
+          trackAnim(chevIcon.animate(
+            [{ transform: "rotate(-180deg)" }, { transform: "rotate(0deg)" }],
+            { duration: 220, easing: "cubic-bezier(0.32, 0.72, 0, 1)" }
+          ));
+        }
+      }
+    } catch (_) {}
   }
 
   function setCollapsed(v) {
     var restoreFocus = barEl && barEl.contains(document.activeElement);
+    var beforeRect = barEl && barEl.isConnected ? barEl.getBoundingClientRect() : null;
     cfg.collapsed = v;
-    try { chrome.storage.local.set({ cfg: cfg }); } catch (_) {}
+    try {
+      chrome.storage.local.get(["cfg"], function (d) {
+        var latest = Object.assign(shallow(DEFAULTS), (d && d.cfg) || cfg);
+        delete latest.hidden;
+        latest.collapsed = v;
+        chrome.storage.local.set({ cfg: latest });
+      });
+    } catch (_) {}
     render();
+    animateCollapseToggle(!!v, beforeRect);
     if (restoreFocus && barEl) barEl.querySelector(v ? ".cum-restore" : ".cum-min").focus({ preventScroll: true });
   }
 
-  var barEl = null, els = null;
+  var refreshSpinAnim = null, refreshSettleAnim = null, refreshWasBusy = false, feedbackTimer = null, pendingDoneAfterSettle = false;
+  function clearRefreshFeedback() {
+    clearTimeout(feedbackTimer); feedbackTimer = null;
+    pendingDoneAfterSettle = false;
+    if (els && els.refresh) {
+      els.refresh.removeAttribute("data-feedback");
+      els.refresh.classList.remove("cum-nudge");
+    }
+  }
+  function announceStatus(text) {
+    if (!els || !els.announce || !text) return;
+    els.announce.textContent = "";
+    els.announce.textContent = text;
+  }
+  function showDoneCheckmark() {
+    if (!els || !els.refresh || usageInFlight) return;
+    els.refresh.setAttribute("data-feedback", "done");
+    clearTimeout(feedbackTimer);
+    feedbackTimer = setTimeout(function () {
+      feedbackTimer = null;
+      if (els && els.refresh) els.refresh.removeAttribute("data-feedback");
+    }, 950);
+  }
+  function triggerNudge(el) {
+    if (!el || !motionAllowed()) return;
+    el.classList.remove("cum-nudge");
+    void el.offsetWidth;
+    el.classList.add("cum-nudge");
+    setTimeout(function () { if (el) el.classList.remove("cum-nudge"); }, 320);
+  }
+  function finishManualRefresh(outcome) {
+    if (!els || !els.refresh) return;
+    if (outcome === "ok") {
+      announceStatus("Refreshed " + providerLabel + " usage");
+      if (refreshSettleAnim) pendingDoneAfterSettle = true;
+      else showDoneCheckmark();
+    } else if (outcome === "error") {
+      announceStatus("Refresh failed" + (errorText ? ": " + errorText : ""));
+      triggerNudge(els.refresh);
+      if (els.status && els.status.style.display !== "none") triggerNudge(els.status);
+    } else if (outcome === "empty") {
+      announceStatus(providerLabel + " usage unavailable");
+    }
+  }
+  function syncRefreshSpin(busy) {
+    if (!els || !els.refresh) return;
+    var icon = els.refresh.querySelector(".cum-icon-refresh");
+    if (!icon || !motionAllowed() || typeof icon.animate !== "function") {
+      if (refreshSpinAnim) { try { refreshSpinAnim.cancel(); } catch (_) {} refreshSpinAnim = null; }
+      refreshSettleAnim = null;
+      els.refresh.removeAttribute("data-waapi-spin");
+      refreshWasBusy = busy;
+      return;
+    }
+    if (busy && !refreshWasBusy) {
+      if (refreshSpinAnim) { try { refreshSpinAnim.cancel(); } catch (_) {} }
+      refreshSettleAnim = null;
+      var startAngle = currentAngle(icon);
+      els.refresh.setAttribute("data-waapi-spin", "true");
+      try {
+        refreshSpinAnim = icon.animate(
+          [{ transform: "rotate(" + startAngle.toFixed(1) + "deg)" }, { transform: "rotate(" + (startAngle + 360).toFixed(1) + "deg)" }],
+          { duration: 850, iterations: Infinity, easing: "linear" }
+        );
+      } catch (_) { refreshSpinAnim = null; els.refresh.removeAttribute("data-waapi-spin"); }
+    } else if (!busy && refreshWasBusy) {
+      var angle = currentAngle(icon);
+      if (refreshSpinAnim) { try { refreshSpinAnim.cancel(); } catch (_) {} refreshSpinAnim = null; }
+      var remaining = 360 - angle;
+      if (remaining > 8 && remaining < 358) {
+        try {
+          var settle = icon.animate(
+            [{ transform: "rotate(" + angle.toFixed(1) + "deg)" }, { transform: "rotate(360deg)" }],
+            { duration: Math.round(Math.max(140, Math.min(340, remaining * 0.92))), easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
+          );
+          refreshSpinAnim = settle;
+          refreshSettleAnim = settle;
+          var done = function () {
+            if (refreshSpinAnim === settle) refreshSpinAnim = null;
+            if (refreshSettleAnim === settle) refreshSettleAnim = null;
+            if (els && els.refresh && !usageInFlight) {
+              els.refresh.removeAttribute("data-waapi-spin");
+              if (pendingDoneAfterSettle) { pendingDoneAfterSettle = false; showDoneCheckmark(); }
+            }
+          };
+          settle.onfinish = done;
+          settle.oncancel = done;
+        } catch (_) { refreshSettleAnim = null; els.refresh.removeAttribute("data-waapi-spin"); }
+      } else {
+        refreshSettleAnim = null;
+        els.refresh.removeAttribute("data-waapi-spin");
+      }
+    }
+    refreshWasBusy = busy;
+  }
+
+  var barEl = null, els = null, lastBarState = null, lastPlacedCompact = null, enterTimer = null;
 
   // Build the bar skeleton ONCE; later we only update text/width/colors so the
   // fills animate smoothly and nothing flickers.
@@ -218,7 +455,7 @@
       var pct = document.createElement("span"); pct.className = "cum-pct";
       var reset = document.createElement("span"); reset.className = "cum-reset";
       row.appendChild(label); row.appendChild(track); row.appendChild(pct); row.appendChild(reset);
-      return { row: row, fill: fill, pct: pct, reset: reset };
+      return { row: row, fill: fill, pct: pct, reset: reset, displayedPct: null, targetPct: null, rafId: 0, scaleRafId: 0 };
     }
 
     var five = meterRow("5 Hrs");
@@ -235,24 +472,29 @@
     min.addEventListener("click", function () { setCollapsed(true); });
     meta.appendChild(live); meta.appendChild(updated);
     var refresh = document.createElement("button"); refresh.type = "button"; refresh.className = "cum-refresh";
-    refresh.innerHTML = svg('<path d="M20 7v5h-5M20 12a8 8 0 1 0-2.34 5.66"/>');
-    refresh.addEventListener("click", function () { if (refresh.getAttribute("aria-disabled") !== "true") loadUsage(true); });
+    refresh.innerHTML = '<span class="cum-refresh-slot">' + svg('<path d="M20 7v5h-5M20 12a8 8 0 1 0-2.34 5.66"/>', "cum-icon-refresh") + '</span>' +
+      svg('<path d="M5 13l4 4L19 7"/>', "cum-icon-check");
+    refresh.addEventListener("click", function () {
+      if (refresh.getAttribute("aria-disabled") !== "true") loadUsage(true, false, true);
+    });
     meta.appendChild(refresh);
     meta.appendChild(min);
 
     main.appendChild(body); main.appendChild(meta);
 
-    var chip = document.createElement("button"); chip.type = "button"; chip.setAttribute("aria-label", "Show " + providerLabel + " usage"); chip.className = "cum-restore"; chip.title = "Show usage";
+    var chip = document.createElement("button"); chip.type = "button"; chip.setAttribute("aria-label", "Show " + providerLabel + " usage"); chip.setAttribute("aria-describedby", "cum-chip-desc"); chip.className = "cum-restore"; chip.title = "Show usage";
     var chipDot = document.createElement("span"); chipDot.className = "cum-live";
     var chipText = document.createElement("span"); chipText.className = "cum-chip-text"; chipText.textContent = providerLabel + " Usage";
     var chipIcon = document.createElement("span"); chipIcon.className = "cum-chev"; chipIcon.innerHTML = svg('<path d="M6 9l6 6 6-6"/>');
+    var chipDesc = document.createElement("span"); chipDesc.id = "cum-chip-desc"; chipDesc.className = "cum-sr-only";
     chip.appendChild(chipDot); chip.appendChild(chipText); chip.appendChild(chipIcon);
     chip.addEventListener("click", function () { setCollapsed(false); });
 
+    var announce = document.createElement("span"); announce.className = "cum-sr-only"; announce.setAttribute("role", "status"); announce.setAttribute("aria-live", "polite"); announce.setAttribute("aria-atomic", "true");
     var source = document.createElement("a"); source.className = "cum-source";
     source.target = "_blank"; source.rel = "noopener noreferrer";
-    bar.appendChild(source); bar.appendChild(main); bar.appendChild(chip);
-    els = { source: source, main: main, five: five, divider: divider, weekly: weekly, status: statusEl, live: live, updated: updated, chip: chip, refresh: refresh };
+    bar.appendChild(source); bar.appendChild(main); bar.appendChild(chip); bar.appendChild(chipDesc); bar.appendChild(announce);
+    els = { source: source, main: main, five: five, divider: divider, weekly: weekly, status: statusEl, live: live, updated: updated, chip: chip, chipDesc: chipDesc, announce: announce, refresh: refresh, min: min };
   }
 
   // Compact dock labels; the full reset timestamp remains in the tooltip.
@@ -262,18 +504,85 @@
     var days = Math.floor(minutes / 1440), hours = Math.floor(minutes % 1440 / 60);
     return days ? days + "d " + hours + "h" : hours ? hours + "h " + minutes % 60 + "m" : minutes + "m";
   }
+  function formatPct(p) { return (Math.round(p * 10) / 10) + "%"; }
+  function cancelMeterAnims(m, commit) {
+    if (m.rafId && typeof cancelAnimationFrame === "function") { cancelAnimationFrame(m.rafId); m.rafId = 0; }
+    if (m.scaleRafId && typeof cancelAnimationFrame === "function") { cancelAnimationFrame(m.scaleRafId); m.scaleRafId = 0; }
+    m.pendingScale = null;
+    if (commit && m.targetPct !== null) {
+      m.displayedPct = m.targetPct;
+      m.pct.textContent = formatPct(m.targetPct);
+      m.fill.style.setProperty("--cum-pct-scale", (Math.max(0, Math.min(100, m.targetPct)) / 100).toFixed(4));
+    }
+  }
   function setMeter(m, data, compact) {
+    var wasHidden = m.row.style.display === "none";
     m.row.style.display = "";
     m.row.classList.toggle("cum-unavailable", !data);
     if (!data) {
-      m.pct.textContent = "—"; m.fill.style.width = "0%"; m.reset.style.display = "none";
+      cancelMeterAnims(m, false);
+      m.displayedPct = null; m.targetPct = null;
+      m.pct.textContent = "—";
+      m.fill.style.setProperty("--cum-pct-scale", "0");
+      m.reset.style.display = "none";
       m.row.title = "This usage window is not reported by the provider";
       return;
     }
     m.row.title = data.pct + "% used" + (data.resetText ? " · " + data.resetText : "");
     m.fill.className = "cum-fill " + colorClass(data.pct);
-    m.fill.style.width = Math.round(data.pct) + "%";
-    m.pct.textContent = (Math.round(data.pct * 10) / 10) + "%";
+    var targetScale = (Math.max(0, Math.min(100, data.pct)) / 100).toFixed(4);
+    if (wasHidden && motionAllowed() && typeof requestAnimationFrame === "function") {
+      if (m.scaleRafId && typeof cancelAnimationFrame === "function") cancelAnimationFrame(m.scaleRafId);
+      m.pendingScale = targetScale;
+      m.fill.style.setProperty("--cum-pct-scale", "0");
+      if (typeof m.row.animate === "function") {
+        try {
+          m.row.animate(
+            [{ opacity: 0, transform: "translateY(2px)" }, { opacity: 1, transform: "translateY(0)" }],
+            { duration: 220, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
+          );
+        } catch (_) {}
+      }
+      m.scaleRafId = requestAnimationFrame(function () {
+        m.scaleRafId = requestAnimationFrame(function () {
+          m.scaleRafId = 0;
+          m.pendingScale = null;
+          m.fill.style.setProperty("--cum-pct-scale", targetScale);
+        });
+      });
+    } else if (!(m.scaleRafId && m.pendingScale === targetScale)) {
+      if (m.scaleRafId && typeof cancelAnimationFrame === "function") { cancelAnimationFrame(m.scaleRafId); m.scaleRafId = 0; }
+      m.pendingScale = null;
+      m.fill.style.setProperty("--cum-pct-scale", targetScale);
+    }
+
+    if (m.targetPct !== data.pct) {
+      if (m.displayedPct === null || !motionAllowed() || document.visibilityState !== "visible" || typeof requestAnimationFrame !== "function") {
+        if (m.rafId && typeof cancelAnimationFrame === "function") { cancelAnimationFrame(m.rafId); m.rafId = 0; }
+        m.displayedPct = data.pct;
+        m.targetPct = data.pct;
+        m.pct.textContent = formatPct(data.pct);
+      } else {
+        if (m.rafId && typeof cancelAnimationFrame === "function") cancelAnimationFrame(m.rafId);
+        var from = m.displayedPct;
+        var to = data.pct;
+        var started = performance.now();
+        var duration = 420;
+        var lastText = m.pct.textContent;
+        m.targetPct = to;
+        var step = function (now) {
+          var t = Math.min(1, Math.max(0, (now - started) / duration));
+          var eased = 1 - Math.pow(1 - t, 3.2);
+          m.displayedPct = t >= 1 ? to : from + (to - from) * eased;
+          var nextText = formatPct(m.displayedPct);
+          if (nextText !== lastText) { lastText = nextText; m.pct.textContent = nextText; }
+          if (t < 1) m.rafId = requestAnimationFrame(step);
+          else m.rafId = 0;
+        };
+        m.rafId = requestAnimationFrame(step);
+      }
+    }
+
     if (data.resetMs) {
       var d = new Date(data.resetMs);
       m.reset.style.display = ""; m.reset.textContent = "· " + (compact ? compactFuture(d) : relFuture(d));
@@ -283,34 +592,50 @@
     } else { m.reset.style.display = "none"; m.reset.textContent = ""; }
   }
 
+  function unmountBar(resetNode) {
+    cancelCollapseAnims();
+    clearRefreshFeedback();
+    if (refreshSpinAnim) { try { refreshSpinAnim.cancel(); } catch (_) {} refreshSpinAnim = null; }
+    refreshSettleAnim = null;
+    refreshWasBusy = false;
+    clearTimeout(enterTimer); enterTimer = null;
+    if (els) { cancelMeterAnims(els.five, true); cancelMeterAnims(els.weekly, true); }
+    if (barEl) {
+      barEl.classList.remove("cum-entering", "cum-obscured");
+      if ("inert" in barEl) barEl.inert = false;
+      barEl.remove();
+      if (resetNode) { barEl = null; els = null; lastBarState = null; }
+    }
+    layout.restoreGreeting(true);
+    layout.observeComposer(null, null);
+  }
+
   function render() {
-    layout.restoreGreeting();
     var nextScope = providerScope();
     if (nextScope !== scope) {
       scope = nextScope; scopeVersion++; usage = null; status = "loading"; errorText = ""; lastAttempt = 0; retryAt = 0; rateLimited = false;
       setTimeout(function () { if (document.visibilityState === "visible") loadUsage(false); }, 0);
     }
     if (provider === "gemini" && UsageProviders.isGeminiUsage(location.href)) {
-      if (barEl) barEl.remove(); layout.observeComposer(null, null); return;
+      unmountBar(false); return;
     }
     if (provider === "gemini" && !lastAttempt && !usageInFlight && document.visibilityState === "visible") {
       setTimeout(function () { loadUsage(false); }, 0);
     }
     var displayKey = { claude: "showClaude", codex: "showCodex", gemini: "showGemini" }[provider];
-    if (cfg[displayKey] === false) { if (barEl) { barEl.remove(); barEl = null; els = null; } layout.observeComposer(null, null); return; }
+    if (cfg[displayKey] === false) { unmountBar(true); return; }
     var editable = layout.findEditable();
     // A detached composer can remain cached across SPA navigation. Remove the
     // old meter when there is no safe target instead of leaving it on screen.
     if (!document.body || (!editable && !(provider === "claude" && isCodePage()))) {
-      if (barEl) barEl.remove();
-      layout.observeComposer(null, null);
+      unmountBar(false);
       return;
     }
 
     if (!barEl) { barEl = document.createElement("div"); barEl.id = BAR_ID; }
     var transparency = typeof cfg.transparency === "number" && Number.isFinite(cfg.transparency) ? Math.max(0, Math.min(95, Math.round(cfg.transparency))) : DEFAULTS.transparency;
     barEl.style.setProperty("--surface-alpha", (1 - transparency / 100).toFixed(2));
-    if (!els) { buildStructure(barEl); setTimeout(function () { if (barEl) barEl.style.animation = "none"; }, 360); }
+    if (!els) buildStructure(barEl);
     barEl.classList.add("cum-code-dock");
     barEl.setAttribute("role", "region");
     barEl.setAttribute("aria-label", providerLabel + " usage");
@@ -319,16 +644,27 @@
     try { els.source.href = UsageProviders.usageUrl(location.href); }
     catch (_) { els.source.href = "https://gemini.google.com/app"; }
     var ageMin = usage ? (Date.now() - usage.at) / 60000 : 0;
-    barEl.setAttribute("data-state", status === "ok" && ageMin > cfg.staleMinutes ? "stale" : status);
+    var nextState = status === "ok" && ageMin > cfg.staleMinutes ? "stale" : status;
+    var enteredWarning = (nextState === "error" || nextState === "stale") && lastBarState !== "error" && lastBarState !== "stale" && lastBarState !== null;
+    lastBarState = nextState;
+    barEl.setAttribute("data-state", nextState);
     var warning = status === "error" || (usage && ageMin > cfg.staleMinutes);
     var stateLabel = status === "error" ? "Refresh failed" + (usage ? " — showing last reading. " : ". ") + errorText
       : warning ? "Reading is out of date — updated " + relPast(usage.at) : usage ? "Updated " + relPast(usage.at) : status === "empty" ? "Usage unavailable" : "Loading usage";
-    [els.live, els.chip.querySelector(".cum-live")].forEach(function (indicator) {
+    var indicators = [els.live, els.chip.querySelector(".cum-live")];
+    indicators.forEach(function (indicator) {
       indicator.textContent = warning ? "!" : "";
       indicator.title = stateLabel;
       indicator.setAttribute("role", "img");
       indicator.setAttribute("aria-label", stateLabel);
+      if (enteredWarning && motionAllowed()) {
+        indicator.classList.remove("cum-alert-ping");
+        void indicator.offsetWidth;
+        indicator.classList.add("cum-alert-ping");
+        setTimeout(function () { indicator.classList.remove("cum-alert-ping"); }, 460);
+      }
     });
+    if (els.chipDesc) els.chipDesc.textContent = stateLabel;
     if (warning) barEl.title += ". " + stateLabel;
     if (els.refresh) {
       var cooling = rateLimited && Date.now() < retryAt;
@@ -337,6 +673,7 @@
       els.refresh.setAttribute("aria-label", refreshLabel);
       els.refresh.setAttribute("aria-disabled", String(!!usageInFlight || cooling));
       els.refresh.setAttribute("aria-busy", String(!!usageInFlight));
+      syncRefreshSpin(!!usageInFlight);
     }
     var note = status === "error" ? " · refresh failed" : ageMin > cfg.staleMinutes ? " · stale" : "";
     els.source.textContent = providerLabel + " · used" + note;
@@ -344,7 +681,18 @@
       (errorText || (usage ? "Updated " + relPast(usage.at) + ". " : "")) + " Open official usage page";
     // Keep the node outside the editor tree on all providers so drafts, focus
     // and the site's own composer layout remain untouched.
-    if (barEl.parentElement !== document.body) document.body.appendChild(barEl);
+    var mounting = barEl.parentElement !== document.body;
+    if (mounting) {
+      document.body.appendChild(barEl);
+      if (motionAllowed()) {
+        barEl.classList.add("cum-entering");
+        clearTimeout(enterTimer);
+        enterTimer = setTimeout(function () {
+          enterTimer = null;
+          if (barEl) barEl.classList.remove("cum-entering");
+        }, 300);
+      }
+    }
 
     barEl.classList.toggle("cum-collapsed", !!cfg.collapsed);
     if (cfg.collapsed) { els.main.style.display = "none"; els.chip.style.display = ""; layout.placeBar(barEl, editable, cfg.collapsed); return; }
@@ -367,13 +715,14 @@
       els.divider.style.display = "none";
       els.status.style.display = "";
       els.status.textContent = status === "error" ? (errorText || "Can't reach usage — sign in to " + providerLabel)
-        : status === "empty" ? "5h / 7d usage unavailable — open Usage page" : "Loading " + providerLabel + " usage…";
+        : status === "empty" ? "5h / 7d usage unavailable — open QuotaLens for Usage page" : "Loading " + providerLabel + " usage…";
       els.live.style.display = warning ? "" : "none"; els.updated.style.display = "none";
     }
     layout.placeBar(barEl, editable, cfg.collapsed);
     // Placement may fall back to the small corner dock even for a wide
     // composer. Its fixed time column needs the compact wording as well.
     var placedCompact = !barEl.classList.contains("cum-composer") || barEl.classList.contains("cum-compact");
+    lastPlacedCompact = placedCompact;
     if (usage && (usage.five || usage.weekly) && placedCompact !== compact) {
       setMeter(els.five, usage.five, placedCompact);
       setMeter(els.weekly, usage.weekly, placedCompact);
@@ -414,8 +763,47 @@
     mo.observe(document.body || document.documentElement, options);
   }
 
-  var scheduled = false;
-  function schedule() { if (scheduled) return; scheduled = true; setTimeout(function () { scheduled = false; render(); }, 200); }
+  var scheduled = false, layoutScheduled = false;
+  function schedule() {
+    if (scheduled) return;
+    scheduled = true;
+    setTimeout(function () {
+      scheduled = false;
+      if (barEl && barEl.isConnected && providerScope() === scope) placeOnly();
+      else render();
+    }, 120);
+  }
+  function placeOnly() {
+    var displayKey = { claude: "showClaude", codex: "showCodex", gemini: "showGemini" }[provider];
+    if (cfg[displayKey] === false || (provider === "gemini" && UsageProviders.isGeminiUsage(location.href))) {
+      render();
+      return;
+    }
+    var editable = layout.findEditable();
+    if (!barEl || !barEl.isConnected || !document.body || (!editable && !(provider === "claude" && isCodePage()))) {
+      render();
+      return;
+    }
+    layout.placeBar(barEl, editable, cfg.collapsed);
+    if (!cfg.collapsed && usage && (usage.five || usage.weekly)) {
+      var placedCompact = !barEl.classList.contains("cum-composer") || barEl.classList.contains("cum-compact");
+      if (placedCompact !== lastPlacedCompact) {
+        lastPlacedCompact = placedCompact;
+        setMeter(els.five, usage.five, placedCompact);
+        setMeter(els.weekly, usage.weekly, placedCompact);
+      }
+    }
+  }
+  function scheduleLayout() {
+    if (layoutScheduled) return;
+    layoutScheduled = true;
+    var run = function () {
+      layoutScheduled = false;
+      placeOnly();
+    };
+    if (typeof requestAnimationFrame === "function" && motionMedia) requestAnimationFrame(run);
+    else setTimeout(run, 16);
+  }
   function hasPageMutation(records) {
     return records.some(function (record) { return !barEl || !barEl.contains(record.target); });
   }
@@ -423,9 +811,15 @@
     new MutationObserver(function (records) { if (hasPageMutation(records)) schedule(); })
       .observe(document.documentElement, { childList: true, subtree: true });
   }
-  window.addEventListener("resize", schedule);
-  document.addEventListener("scroll", schedule, true);
-  document.addEventListener("input", schedule, true);
+  window.addEventListener("resize", scheduleLayout);
+  if (window.visualViewport && typeof window.visualViewport.addEventListener === "function") {
+    window.visualViewport.addEventListener("resize", scheduleLayout);
+    window.visualViewport.addEventListener("scroll", scheduleLayout);
+  }
+  document.addEventListener("scroll", function (event) {
+    if (layout.affectsAnchor(event.target)) scheduleLayout();
+  }, { capture: true, passive: true });
+  document.addEventListener("input", scheduleLayout, { capture: true, passive: true });
 
   function restartPolling() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -435,9 +829,20 @@
     pollTimer = setInterval(function () { loadUsage(false); }, ms);
   }
 
+  function startUiTimer() {
+    if (uiTimer) clearInterval(uiTimer);
+    uiTimer = setInterval(render, 1000);
+  }
+
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "visible") restartPolling();
-    else if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (document.visibilityState === "visible") {
+      restartPolling();
+      startUiTimer();
+      render();
+    } else {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (uiTimer) { clearInterval(uiTimer); uiTimer = null; }
+    }
   });
 
   // Some browser shells resume without a visibility transition. Re-arm polling
@@ -457,8 +862,7 @@
       if (document.body) watchGeneration();
       else document.addEventListener("DOMContentLoaded", watchGeneration);
       // light UI tick so "updated Ns ago" and reset countdowns stay fresh
-      if (uiTimer) clearInterval(uiTimer);
-      uiTimer = setInterval(render, 1000);
+      if (document.visibilityState === "visible") startUiTimer();
     });
   }
   init();

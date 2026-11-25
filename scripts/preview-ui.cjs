@@ -11,7 +11,7 @@ const listeners = [];
 window.chrome = {
   storage: { local: { get: (_, cb) => cb(stored), set: (data, done) => { Object.assign(stored, data); listeners.forEach(cb => cb({cfg:{newValue:stored.cfg}}, 'local')); if (done) done(); }, remove() {} }, onChanged: { addListener(cb) { listeners.push(cb); } } },
   runtime: { onMessage: { addListener() {} } },
-  tabs: { query: (_, cb) => cb([{ id: 1, url: 'https://chatgpt.com/c/preview' }]), sendMessage: (_, message, cb) => cb({ status: 'ok', hasData: true, at: Date.now() }), create() {} }
+  tabs: { query: (_, cb) => cb([{ id: 1, url: 'https://chatgpt.com/c/preview' }]), sendMessage: (_, message, cb) => cb({ ok: true, status: 'ok', hasData: true, at: Date.now() }), create() {} }
 };
 </script>`;
 const providerPage = (theme, provider, state) => `<!doctype html><html class="${theme}"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/src/content.css"><style>
